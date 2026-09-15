@@ -5,7 +5,6 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
 
 function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
   return (
@@ -155,20 +154,21 @@ function FieldSeparator({
       data-slot="field-separator"
       data-content={!!children}
       className={cn(
-        "relative -my-2 h-5 text-sm group-data-[variant=outline]/field-group:-mb-2",
+        "relative my-7 flex items-center justify-center",
         className
       )}
       {...props}
     >
-      <Separator className="absolute inset-0 top-1/2" />
+      <div className="border-t border-slate-800 w-full" />
       {children && (
         <span
-          className="relative mx-auto block w-fit bg-background px-2 text-muted-foreground"
+          className="px-3 text-xs text-slate-500 font-normal uppercase tracking-wider whitespace-nowrap bg-transparent"
           data-slot="field-separator-content"
         >
           {children}
         </span>
       )}
+      <div className="border-t border-slate-800 w-full" />
     </div>
   )
 }

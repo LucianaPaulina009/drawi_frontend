@@ -2,7 +2,6 @@
 
 import { useRef } from "react";
 import { cn } from "@/lib/utils";
-import { FieldGroup } from "@/components/ui/field";
 import TextFormField from "@/features/shared/presentation/components/forms/text-form-field";
 import { authClient } from "@/lib/auth-client";
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
@@ -21,20 +20,11 @@ export function ForgotPasswordForm({
     await authClient.requestPasswordReset(
       {
         email,
-        /**
-         * URL de la página donde el usuario podrá ingresar su nueva contraseña.
-         * Better Auth añade automáticamente el ?token=... a esta URL.
-         */
         redirectTo: "/auth/reset-password",
       },
       {
         onSuccess: () => {
           formRef.current?.reset();
-          /**
-           * Por seguridad, siempre mostramos el mismo mensaje de éxito
-           * independientemente de si el email existe o no en la base de datos.
-           * Esto evita que se pueda enumerar usuarios existentes.
-           */
           appToast.success(
             "Si ese email está registrado, recibirás un enlace para restablecer tu contraseña.",
           );
@@ -50,19 +40,23 @@ export function ForgotPasswordForm({
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <form ref={formRef} action={handleSubmit}>
-        <FieldGroup>
-          <TextFormField
-            id="email"
-            name="email"
-            label="Email"
-            placeholder="tu@correo.com"
-            type="email"
-            autoComplete="email"
+    <div className={cn("w-full", className)} {...props}>
+      <form ref={formRef} action={handleSubmit} className="space-y-4">
+        <TextFormField
+          id="email"
+          name="email"
+          label="Correo electrónico"
+          placeholder="tu@correo.com"
+          type="email"
+          autoComplete="email"
+          hideLabel
+        />
+        <div className="pt-2">
+          <SubmitButton
+            text="Enviar enlace de recuperación"
+            pendingText="Enviando..."
           />
-          <SubmitButton text="Enviar enlace" pendingText="Enviando..." />
-        </FieldGroup>
+        </div>
       </form>
     </div>
   );

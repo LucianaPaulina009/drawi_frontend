@@ -1,6 +1,5 @@
 import { createAuthClient } from "better-auth/react";
-import { adminClient, jwtClient } from "better-auth/client/plugins";
-import { ac, roles } from "@/lib/auth-roles";
+import { jwtClient } from "better-auth/client/plugins";
 
 export const authClient = createAuthClient({
   /**
@@ -17,26 +16,6 @@ export const authClient = createAuthClient({
      * Agrega el método `authClient.jwt.getToken()` que llama a
      * GET /api/auth/token usando la cookie de sesión activa.
      */
-    jwtClient(),
-
-    /**
-     * Cliente del Admin Plugin.
-     * Desbloquea las APIs administrativas desde el cliente:
-     *
-     *   authClient.admin.setRole({ userId, role })
-     *   authClient.admin.listUsers({ query })
-     *   authClient.admin.banUser({ userId, banReason?, banExpiresIn? })
-     *   authClient.admin.unbanUser({ userId })
-     *   authClient.admin.createUser({ email, name, role?, password?, data? })
-     *   authClient.admin.removeUser({ userId })
-     *   authClient.admin.impersonateUser({ userId })
-     *   authClient.admin.hasPermission({ permission })
-     *   authClient.admin.revokeUserSession({ sessionToken })
-     *   authClient.admin.revokeUserSessions({ userId })
-     *
-     * Solo funcionan si el usuario autenticado tiene un rol en ADMIN_ROLES.
-     * La configuración de roles y permisos viene de lib/auth-roles.ts.
-     */
-    adminClient({ ac, roles } as Parameters<typeof adminClient>[0]),
+    jwtClient()
   ],
 });

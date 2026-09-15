@@ -3,7 +3,6 @@
 import { useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { FieldGroup } from "@/components/ui/field";
 import TextFormField from "@/features/shared/presentation/components/forms/text-form-field";
 import { authClient } from "@/lib/auth-client";
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
@@ -27,10 +26,6 @@ export function ResetPasswordForm({
       return;
     }
 
-    /**
-     * Better Auth envía el token en la URL como query param ?token=...
-     * cuando el usuario hace clic en el enlace del correo.
-     */
     const token = searchParams.get("token");
 
     if (!token) {
@@ -65,30 +60,41 @@ export function ResetPasswordForm({
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <form ref={formRef} action={handleSubmit}>
-        <FieldGroup>
-          <TextFormField
-            id="newPassword"
-            name="newPassword"
-            label="Nueva contraseña"
-            placeholder="Mínimo 8 caracteres"
-            type="password"
-            autoComplete="new-password"
-          />
-          <TextFormField
-            id="confirmPassword"
-            name="confirmPassword"
-            label="Confirmar contraseña"
-            placeholder="Repite tu contraseña"
-            type="password"
-            autoComplete="new-password"
-          />
+    <div className={cn("w-full", className)} {...props}>
+      <form ref={formRef} action={handleSubmit} className="space-y-4">
+        <TextFormField
+          id="newPassword"
+          name="newPassword"
+          label="Nueva contraseña"
+          placeholder="Nueva contraseña"
+          type="password"
+          autoComplete="new-password"
+          hideLabel
+        />
+        <TextFormField
+          id="confirmPassword"
+          name="confirmPassword"
+          label="Confirmar contraseña"
+          placeholder="Confirmar contraseña"
+          type="password"
+          autoComplete="new-password"
+          hideLabel
+        />
+        <div className="px-2">
+          <p className="text-xs text-gray-500 font-normal leading-relaxed flex items-center gap-1.5">
+            <svg className="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8v4m0 4h.01" strokeLinecap="round" />
+            </svg>
+            Debe contener al menos 8 caracteres, una letra mayúscula y un número
+          </p>
+        </div>
+        <div className="pt-2">
           <SubmitButton
             text="Restablecer contraseña"
             pendingText="Restableciendo..."
           />
-        </FieldGroup>
+        </div>
       </form>
     </div>
   );

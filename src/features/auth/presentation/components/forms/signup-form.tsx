@@ -3,7 +3,6 @@
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { FieldGroup } from "@/components/ui/field";
 import TextFormField from "@/features/shared/presentation/components/forms/text-form-field";
 import { authClient } from "@/lib/auth-client";
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
@@ -27,7 +26,7 @@ export function SignupForm({
         name,
         email,
         password,
-        callbackURL: "/home",
+        callbackURL: "/proyectos",
       },
       {
         onSuccess: () => {
@@ -46,35 +45,38 @@ export function SignupForm({
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <form ref={formRef} action={handleSubmit}>
-        <FieldGroup>
-          <TextFormField
-            id="name"
-            name="name"
-            label="Nombre"
-            placeholder="Tu nombre"
-            type="text"
-            autoComplete="name"
-          />
-          <TextFormField
-            id="email"
-            name="email"
-            label="Email"
-            placeholder="tu@correo.com"
-            type="email"
-            autoComplete="email"
-          />
-          <TextFormField
-            id="password"
-            name="password"
-            label="Contraseña"
-            placeholder="Mínimo 8 caracteres"
-            type="password"
-            autoComplete="new-password"
-          />
-          <SubmitButton text="Registrarse" pendingText="Registrando..." />
-        </FieldGroup>
+    <div className={cn("w-full", className)} {...props}>
+      <form ref={formRef} action={handleSubmit} className="space-y-4">
+        <TextFormField
+          id="name"
+          name="name"
+          label="Nombre completo"
+          placeholder="Nombre completo"
+          type="text"
+          autoComplete="name"
+          hideLabel
+        />
+        <TextFormField
+          id="email"
+          name="email"
+          label="Correo electrónico"
+          placeholder="Correo electrónico"
+          type="email"
+          autoComplete="email"
+          hideLabel
+        />
+        <TextFormField
+          id="password"
+          name="password"
+          label="Contraseña"
+          placeholder="Contraseña (mínimo 8 caracteres)"
+          type="password"
+          autoComplete="new-password"
+          hideLabel
+        />
+        <div className="pt-2">
+          <SubmitButton text="Crear cuenta" pendingText="Creando cuenta..." />
+        </div>
       </form>
     </div>
   );

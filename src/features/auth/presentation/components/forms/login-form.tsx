@@ -4,7 +4,6 @@ import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { FieldGroup } from "@/components/ui/field";
 import TextFormField from "@/features/shared/presentation/components/forms/text-form-field";
 import { authClient } from "@/lib/auth-client";
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
@@ -26,14 +25,14 @@ export function LoginForm({
       {
         email,
         password,
-        callbackURL: "/home",
+        callbackURL: "/proyectos",
         rememberMe: false,
       },
       {
         onSuccess: () => {
           formRef.current?.reset();
           appToast.success("¡Bienvenido de vuelta!");
-          router.push("/home");
+          router.push("/proyectos");
         },
         onError: (ctx) => {
           appToast.error(
@@ -46,40 +45,42 @@ export function LoginForm({
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <form ref={formRef} action={handleSubmit}>
-        <FieldGroup>
-          <TextFormField
-            id="email"
-            name="email"
-            label="Email"
-            placeholder="tu@correo.com"
-            type="email"
-            autoComplete="email"
-          />
-          <TextFormField
-            id="password"
-            name="password"
-            label="Contraseña"
-            placeholder="*******"
-            type="password"
-            autoComplete="current-password"
-          />
+    <div className={cn("w-full", className)} {...props}>
+      <form ref={formRef} action={handleSubmit} className="space-y-4">
+        <TextFormField
+          id="username"
+          name="email"
+          label="Usuario o correo electrónico"
+          placeholder="Usuario o correo electrónico"
+          type="email"
+          autoComplete="email"
+          hideLabel
+        />
+        <TextFormField
+          id="password"
+          name="password"
+          label="Contraseña"
+          placeholder="Contraseña"
+          type="password"
+          autoComplete="current-password"
+          hideLabel
+        />
 
-          <div className="flex justify-end">
-            <Link
-              href="/auth/forgot-password"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              ¿Olvidaste tu contraseña?
-            </Link>
-          </div>
+        <div className="flex justify-end pt-0.5">
+          <Link
+            href="/auth/forgot-password"
+            className="text-xs text-gray-700 hover:text-black font-medium transition-colors focus-visible:outline-none focus-visible:underline"
+          >
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </div>
 
+        <div className="pt-2">
           <SubmitButton
             text="Iniciar sesión"
             pendingText="Iniciando sesión..."
           />
-        </FieldGroup>
+        </div>
       </form>
     </div>
   );
