@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
 import { Minus, Plus, Redo2, Undo2 } from "lucide-react";
+import { useReactFlow, useViewport } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 
 export interface ControlesZoomProps {
@@ -8,6 +9,19 @@ export interface ControlesZoomProps {
 }
 
 export function ControlesZoom({ className }: ControlesZoomProps) {
+  const { zoomIn, zoomOut } = useReactFlow();
+  const { zoom } = useViewport();
+
+  const handleZoomIn = () => {
+    zoomIn({ duration: 150 });
+  };
+
+  const handleZoomOut = () => {
+    zoomOut({ duration: 150 });
+  };
+
+  const porcentajeZoom = Math.round((zoom ?? 1) * 100);
+
   return (
     <div
       aria-label="Controles de zoom y navegación"
@@ -20,7 +34,9 @@ export function ControlesZoom({ className }: ControlesZoomProps) {
         {/* Reducir Zoom */}
         <button
           type="button"
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 active:scale-95"
+          onClick={handleZoomOut}
+          disabled={zoom <= 0.25}
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
           title="Reducir zoom"
           aria-label="Reducir zoom"
         >
@@ -29,13 +45,15 @@ export function ControlesZoom({ className }: ControlesZoomProps) {
 
         {/* Nivel de Zoom Actual */}
         <span className="min-w-[38px] px-1 text-center text-xs font-bold text-slate-700 select-none">
-          100%
+          {porcentajeZoom}%
         </span>
 
         {/* Aumentar Zoom */}
         <button
           type="button"
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 active:scale-95"
+          onClick={handleZoomIn}
+          disabled={zoom >= 2}
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
           title="Aumentar zoom"
           aria-label="Aumentar zoom"
         >

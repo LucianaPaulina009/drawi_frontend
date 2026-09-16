@@ -78,6 +78,7 @@ export function NavegacionPaginas({
           return (
             <div
               key={diagrama.id}
+              onClick={() => onSeleccionarDiagrama(diagrama.id)}
               className={cn(
                 "group relative flex items-center justify-between rounded-xl px-3 py-2 transition-colors cursor-pointer",
                 esActivo
@@ -89,7 +90,6 @@ export function NavegacionPaginas({
                 type="button"
                 role="tab"
                 aria-selected={esActivo}
-                onClick={() => onSeleccionarDiagrama(diagrama.id)}
                 className="flex flex-1 items-center gap-2 text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-app-primary"
               >
                 <FileText

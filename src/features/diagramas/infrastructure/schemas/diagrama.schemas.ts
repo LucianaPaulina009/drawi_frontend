@@ -32,3 +32,7 @@ export const ActualizarDiagramaRequestSchema = z.object({
 });
 
 export const IdParamSchema = z.string().min(1, "El identificador es obligatorio.");
+
+// El valor de URL solo se valida de forma sintáctica. La pertenencia y los
+// permisos se verifican siempre mediante los endpoints autorizados del backend.
+export const DiagramaQueryParamSchema = z.uuid("El diagrama debe ser un UUID válido.");

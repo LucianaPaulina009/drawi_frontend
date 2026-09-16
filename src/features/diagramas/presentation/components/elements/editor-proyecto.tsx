@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { ReactFlowProvider, type Viewport } from "@xyflow/react";
 
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
+import { crearProyectoAction } from "@/features/gestion-proyectos/presentation/actions/proyecto.action";
 import type { Proyecto } from "@/features/gestion-proyectos/domain/entities/proyecto.entity";
 import type {
   Diagrama,
@@ -14,7 +17,11 @@ import {
   eliminarDiagramaAction,
   obtenerDiagramaAction,
 } from "../../actions/diagrama.action";
-import { BarraHerramientas } from "./barra-herramientas";
+import { DiagramaQueryParamSchema } from "../../../infrastructure/schemas/diagrama.schemas";
+import { useDiagramaActivoUrl } from "../../hooks/use-diagrama-activo-url";
+import { useViewportPorDiagrama } from "../../hooks/use-viewport-por-diagrama";
+import { useAtajosEditor } from "../../hooks/use-atajos-editor";
+import { BarraHerramientas, type HerramientaLienzo } from "./barra-herramientas";
 import { ControlesZoom } from "./controles-zoom";
 import { ControlIA } from "./control-ia";
 import { EditorHeader } from "./editor-header";
@@ -31,26 +38,35 @@ export function EditorProyecto({
   proyecto,
   diagramasIniciales,
 }: EditorProyectoProps) {
+  const router = useRouter();
+
   // Lista de páginas en estado local
   const [diagramas, setDiagramas] = useState<Diagrama[]>(diagramasIniciales);
+  const { diagramaSolicitado, pushDiagrama, replaceDiagrama } =
+    useDiagramaActivoUrl();
 
-  // Determinar la página inicial activa con el menor número
-  const idInicial = useMemo(() => {
-    if (diagramasIniciales.length === 0) return null;
-    const ordenados = [...diagramasIniciales].sort(
+  const idDiagramaSolicitado = useMemo(() => {
+    const resultado = DiagramaQueryParamSchema.safeParse(diagramaSolicitado);
+    return resultado.success ? resultado.data : null;
+  }, [diagramaSolicitado]);
+
+  // La URL solicita la selección; el listado autorizado decide si es utilizable.
+  const diagramaActivoId = useMemo(() => {
+    const ordenados = [...diagramas].sort(
       (a, b) => a.numero - b.numero
     );
-    return ordenados[0].id;
-  }, [diagramasIniciales]);
+    const solicitado = ordenados.find(
+      (diagrama) => diagrama.id === idDiagramaSolicitado
+    );
 
-  const [diagramaActivoId, setDiagramaActivoId] = useState<string | null>(
-    idInicial
-  );
+    return solicitado?.id ?? ordenados[0]?.id ?? null;
+  }, [diagramas, idDiagramaSolicitado]);
+
   const [detalleActivo, setDetalleActivo] = useState<DiagramaDetalle | null>(
     null
   );
-  const [cargandoDetalle, setCargandoDetalle] = useState(
-    () => idInicial !== null
+  const [idDiagramaConError, setIdDiagramaConError] = useState<string | null>(
+    null
   );
   const [operacionPendiente, setOperacionPendiente] = useState<
     "crear" | "renombrar" | "eliminar" | null
@@ -60,8 +76,81 @@ export function EditorProyecto({
   const [diagramaAEliminar, setDiagramaAEliminar] =
     useState<Diagrama | null>(null);
 
+  // Estado de herramienta de navegación activa
+  const [herramientaActiva, setHerramientaActiva] =
+    useState<HerramientaLienzo>("seleccion");
+
+  // Estado efímero de viewport por diagrama en sesión
+  const { obtenerViewport, guardarViewport, limpiarViewport } =
+    useViewportPorDiagrama();
+
+  // Estado de transición para creación centralizada de proyecto (compartida por Header y Ctrl+N)
+  const [isCreandoProyecto, startCreateProjectTransition] = useTransition();
+
+  const handleCrearProyecto = useCallback(() => {
+    if (isCreandoProyecto) return;
+    startCreateProjectTransition(async () => {
+      try {
+        const result = await crearProyectoAction();
+        if (result.ok) {
+          appToast.success("Proyecto creado con éxito.");
+          router.push(`/proyecto/${result.data.slug}`);
+        } else {
+          const errorMsg =
+            result.errors?.[0] || "No se pudo crear el proyecto.";
+          appToast.error("Error al crear", errorMsg);
+        }
+      } catch {
+        appToast.error(
+          "Error",
+          "Ocurrió un error inesperado al crear el proyecto."
+        );
+      }
+    });
+  }, [isCreandoProyecto, router]);
+
+  // Atajo Ctrl+S: previene la acción por defecto del navegador sin simular persistencia
+  const handleGuardarCambios = useCallback(() => {
+    // Actualmente no existe caso de uso de persistencia de diagrama.
+    // Queda interceptado para evitar que el navegador abra el diálogo de guardado.
+  }, []);
+
+  // Hook centralizado de atajos del editor (Espacio, Ctrl+N, Ctrl+S)
+  const { espacioPresionado } = useAtajosEditor({
+    onNuevoProyecto: handleCrearProyecto,
+    onGuardarCambios: handleGuardarCambios,
+    deshabilitado: Boolean(diagramaARenombrar || diagramaAEliminar),
+  });
+
+  // Callback para registrar cambios en el viewport del diagrama activo
+  const handleViewportChange = useCallback(
+    (viewport: Viewport) => {
+      if (diagramaActivoId) {
+        guardarViewport(diagramaActivoId, viewport);
+      }
+    },
+    [diagramaActivoId, guardarViewport]
+  );
+
   // Contador para ignorar respuestas de solicitudes anteriores si el usuario cambia rápido de página
   const peticionActivaRef = useRef<number>(0);
+
+  const detalleVisible =
+    detalleActivo?.id === diagramaActivoId ? detalleActivo : null;
+  const cargandoDetalle =
+    diagramaActivoId !== null &&
+    detalleVisible === null &&
+    idDiagramaConError !== diagramaActivoId;
+
+  // Una URL ausente, inválida o no disponible se corrige sin añadir historial.
+  useEffect(() => {
+    if (
+      diagramaActivoId !== null &&
+      idDiagramaSolicitado !== diagramaActivoId
+    ) {
+      replaceDiagrama(diagramaActivoId);
+    }
+  }, [diagramaActivoId, idDiagramaSolicitado, replaceDiagrama]);
 
   // Cargar el detalle del diagrama activo
   useEffect(() => {
@@ -72,11 +161,17 @@ export function EditorProyecto({
 
     obtenerDiagramaAction(proyecto.id, diagramaActivoId)
       .then((res) => {
-        if (cancelado || peticionActual !== peticionActivaRef.current) return;
+        if (cancelado || peticionActual !== peticionActivaRef.current) {
+          return;
+        }
 
         if (res.ok) {
-          setDetalleActivo(res.data);
+          if (res.data.id === diagramaActivoId) {
+            setDetalleActivo(res.data);
+            setIdDiagramaConError(null);
+          }
         } else {
+          setIdDiagramaConError(diagramaActivoId);
           appToast.error(
             "Error",
             res.errors[0] || "No se pudo cargar el detalle de la página."
@@ -84,13 +179,11 @@ export function EditorProyecto({
         }
       })
       .catch(() => {
-        if (cancelado || peticionActual !== peticionActivaRef.current) return;
-        appToast.error("Error", "Error de conexión al cargar la página.");
-      })
-      .finally(() => {
-        if (!cancelado && peticionActual === peticionActivaRef.current) {
-          setCargandoDetalle(false);
+        if (cancelado || peticionActual !== peticionActivaRef.current) {
+          return;
         }
+        setIdDiagramaConError(diagramaActivoId);
+        appToast.error("Error", "Error de conexión al cargar la página.");
       });
 
     return () => {
@@ -98,11 +191,9 @@ export function EditorProyecto({
     };
   }, [proyecto.id, diagramaActivoId]);
 
-  const handleSeleccionarDiagrama = (id: string) => {
-    if (id === diagramaActivoId) return;
-    setDetalleActivo(null);
-    setCargandoDetalle(true);
-    setDiagramaActivoId(id);
+  const handleSeleccionarDiagrama = (idDiagrama: string) => {
+    if (idDiagrama === diagramaActivoId) return;
+    pushDiagrama(idDiagrama);
   };
 
   const handleCrearPagina = async () => {
@@ -130,9 +221,7 @@ export function EditorProyecto({
             )
           : [...actuales, result.data];
       });
-      setDetalleActivo(null);
-      setCargandoDetalle(true);
-      setDiagramaActivoId(result.data.id);
+      pushDiagrama(result.data.id);
       appToast.success("Página creada correctamente.");
     } catch {
       appToast.error("Error", "Ocurrió un error inesperado al crear la página.");
@@ -203,27 +292,20 @@ export function EditorProyecto({
       }
 
       const idEliminado = diagramaAEliminar.id;
+      limpiarViewport(idEliminado);
+
       const diagramasActualizados = diagramas.filter(
         (diagrama) => diagrama.id !== idEliminado
       );
+      const siguienteDiagrama =
+        idEliminado === diagramaActivoId
+          ? [...diagramasActualizados].sort((a, b) => a.numero - b.numero)[0]
+          : undefined;
 
       setDiagramas(diagramasActualizados);
 
-      // Si la página eliminada era la que estaba activa, seleccionar la de menor número restante
-      if (diagramaActivoId === idEliminado) {
-        if (diagramasActualizados.length > 0) {
-          const ordenados = [...diagramasActualizados].sort(
-            (a, b) => a.numero - b.numero
-          );
-          const siguienteId = ordenados[0].id;
-          setDiagramaActivoId(siguienteId);
-          setDetalleActivo(null);
-          setCargandoDetalle(true);
-        } else {
-          setDiagramaActivoId(null);
-          setDetalleActivo(null);
-          setCargandoDetalle(false);
-        }
+      if (siguienteDiagrama) {
+        replaceDiagrama(siguienteDiagrama.id);
       }
 
       setDiagramaAEliminar(null);
@@ -240,57 +322,69 @@ export function EditorProyecto({
   };
 
   return (
-    <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-[#f5f5f5] text-slate-800 select-none font-sans">
-      {/* Cabecera Flotante con Selector de Páginas Integrado */}
-      <EditorHeader
-        proyecto={proyecto}
-        diagramas={diagramas}
-        diagramaActivoId={diagramaActivoId}
-        creandoPagina={operacionPendiente === "crear"}
-        onSeleccionarDiagrama={handleSeleccionarDiagrama}
-        onCrearPagina={handleCrearPagina}
-        onRenombrarPagina={setDiagramaARenombrar}
-        onEliminarPagina={setDiagramaAEliminar}
-      />
+    <ReactFlowProvider>
+      <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-[#f5f5f5] text-slate-800 select-none font-sans">
+        {/* Cabecera Flotante con Selector de Páginas Integrado */}
+        <EditorHeader
+          proyecto={proyecto}
+          diagramas={diagramas}
+          diagramaActivoId={diagramaActivoId}
+          creandoPagina={operacionPendiente === "crear"}
+          onSeleccionarDiagrama={handleSeleccionarDiagrama}
+          onCrearPagina={handleCrearPagina}
+          onRenombrarPagina={setDiagramaARenombrar}
+          onEliminarPagina={setDiagramaAEliminar}
+          onCrearProyecto={handleCrearProyecto}
+          isCreandoProyecto={isCreandoProyecto}
+        />
 
-      {/* Lienzo Diagrama Central */}
-      <LienzoDiagrama
-        diagramaActivo={detalleActivo}
-        cargandoDetalle={cargandoDetalle}
-      />
+        {/* Lienzo Diagrama Central */}
+        <LienzoDiagrama
+          idDiagramaActivo={diagramaActivoId}
+          diagramaActivo={detalleVisible}
+          cargandoDetalle={cargandoDetalle}
+          herramientaActiva={herramientaActiva}
+          espacioPresionado={espacioPresionado}
+          viewportInicial={obtenerViewport(diagramaActivoId)}
+          onViewportChange={handleViewportChange}
+        />
 
-      {/* Controles de Zoom y Navegación (Inferior Izquierda) */}
-      <ControlesZoom />
+        {/* Controles de Zoom y Navegación (Inferior Izquierda) */}
+        <ControlesZoom />
 
-      {/* Barra de Herramientas Flotante (Inferior Central) */}
-      <BarraHerramientas />
+        {/* Barra de Herramientas Flotante (Inferior Central) */}
+        <BarraHerramientas
+          herramientaActiva={herramientaActiva}
+          onCambiarHerramienta={setHerramientaActiva}
+        />
 
-      {/* Asistente IA (Inferior Derecha) */}
-      <ControlIA />
+        {/* Asistente IA (Inferior Derecha) */}
+        <ControlIA />
 
-      {/* Modal para renombrar página */}
-      <ModalRenombrarPagina
-        diagrama={diagramaARenombrar}
-        isPending={operacionPendiente === "renombrar"}
-        onOpenChange={(open) => {
-          if (!open && operacionPendiente !== "renombrar") {
-            setDiagramaARenombrar(null);
-          }
-        }}
-        onGuardar={handleGuardarRenombrado}
-      />
+        {/* Modal para renombrar página */}
+        <ModalRenombrarPagina
+          diagrama={diagramaARenombrar}
+          isPending={operacionPendiente === "renombrar"}
+          onOpenChange={(open) => {
+            if (!open && operacionPendiente !== "renombrar") {
+              setDiagramaARenombrar(null);
+            }
+          }}
+          onGuardar={handleGuardarRenombrado}
+        />
 
-      {/* Modal para eliminar página */}
-      <ModalEliminarPagina
-        diagrama={diagramaAEliminar}
-        isPending={operacionPendiente === "eliminar"}
-        onOpenChange={(open) => {
-          if (!open && operacionPendiente !== "eliminar") {
-            setDiagramaAEliminar(null);
-          }
-        }}
-        onConfirmar={handleConfirmarEliminacion}
-      />
-    </div>
+        {/* Modal para eliminar página */}
+        <ModalEliminarPagina
+          diagrama={diagramaAEliminar}
+          isPending={operacionPendiente === "eliminar"}
+          onOpenChange={(open) => {
+            if (!open && operacionPendiente !== "eliminar") {
+              setDiagramaAEliminar(null);
+            }
+          }}
+          onConfirmar={handleConfirmarEliminacion}
+        />
+      </div>
+    </ReactFlowProvider>
   );
 }

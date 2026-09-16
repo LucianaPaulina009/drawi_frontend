@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -23,8 +24,37 @@ export function MenuPagina({
   onRenombrar,
   onEliminar,
 }: MenuPaginaProps) {
+  const [abierto, setAbierto] = useState(false);
+  const accionPendienteRef = useRef<"renombrar" | "eliminar" | null>(null);
+
+  const handleSeleccionarAccion = (
+    event: Event,
+    accion: "renombrar" | "eliminar"
+  ) => {
+    // El menú se cierra antes de montar un diálogo modal.
+    event.preventDefault();
+    accionPendienteRef.current = accion;
+    setAbierto(false);
+  };
+
+  const handleCerrarMenu = (event: Event) => {
+    const accion = accionPendienteRef.current;
+    if (!accion) return;
+
+    // Evita que Radix devuelva el foco al trigger, que quedará oculto por el diálogo.
+    event.preventDefault();
+    accionPendienteRef.current = null;
+
+    if (accion === "renombrar") {
+      onRenombrar(diagrama);
+      return;
+    }
+
+    onEliminar(diagrama);
+  };
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={abierto} onOpenChange={setAbierto}>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
@@ -32,19 +62,22 @@ export function MenuPagina({
           size="icon-xs"
           className="rounded-full text-gray-400 hover:text-slate-900"
           aria-label={`Opciones de ${diagrama.nombre}`}
+          onClick={(event) => event.stopPropagation()}
         >
           <MoreHorizontal aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={() => onRenombrar(diagrama)}>
+      <DropdownMenuContent align="end" onCloseAutoFocus={handleCerrarMenu}>
+        <DropdownMenuItem
+          onSelect={(event) => handleSeleccionarAccion(event, "renombrar")}
+        >
           <Pencil aria-hidden="true" />
           Renombrar
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"
-          onSelect={() => onEliminar(diagrama)}
+          onSelect={(event) => handleSeleccionarAccion(event, "eliminar")}
         >
           <Trash2 aria-hidden="true" />
           Eliminar

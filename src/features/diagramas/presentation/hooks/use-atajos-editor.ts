@@ -1,0 +1,113 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+export interface UseAtajosEditorOptions {
+  onNuevoProyecto?: () => void;
+  onGuardarCambios?: () => void;
+  deshabilitado?: boolean;
+}
+
+/**
+ * Determina si el evento ocurrió dentro de un control editable, formulario,
+ * diálogo, menú desplegable u overlay interactivo (incluyendo portales de Radix).
+ */
+function esElementoExcluido(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  // 1. Controles nativos y editables
+  const tag = target.tagName.toLowerCase();
+  if (
+    tag === "input" ||
+    tag === "textarea" ||
+    tag === "select" ||
+    target.isContentEditable ||
+    target.getAttribute("contenteditable") === "true"
+  ) {
+    return true;
+  }
+
+  // 2. Elementos dentro de formularios, diálogos, menús o portales de Radix
+  const esContenedorExcluido = target.closest(
+    'form, dialog, [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-radix-portal], [data-radix-popper-content-wrapper], [data-slot="dropdown-menu-content"]'
+  );
+
+  return Boolean(esContenedorExcluido);
+}
+
+export function useAtajosEditor({
+  onNuevoProyecto,
+  onGuardarCambios,
+  deshabilitado = false,
+}: UseAtajosEditorOptions = {}) {
+  const [espacioPresionado, setEspacioPresionado] = useState(false);
+
+  useEffect(() => {
+    if (deshabilitado) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Si el foco está en un elemento excluido (inputs, modales, etc.), ignorar
+      if (esElementoExcluido(event.target)) {
+        return;
+      }
+
+      // 1. Pan temporal con Barra Espaciadora
+      if (event.code === "Space" && !event.repeat) {
+        // Prevenir el scroll por defecto de la barra espaciadora en el navegador
+        event.preventDefault();
+        setEspacioPresionado(true);
+        return;
+      }
+
+      // 2. Atajo Ctrl+N / Cmd+N (Nuevo proyecto)
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        (event.key === "n" || event.key === "N") &&
+        !event.repeat
+      ) {
+        event.preventDefault();
+        onNuevoProyecto?.();
+        return;
+      }
+
+      // 3. Atajo Ctrl+S / Cmd+S (Guardar cambios)
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        (event.key === "s" || event.key === "S") &&
+        !event.repeat
+      ) {
+        // Prevenir el diálogo nativo de guardar página del navegador
+        event.preventDefault();
+        onGuardarCambios?.();
+        return;
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        setEspacioPresionado(false);
+      }
+    };
+
+    const handleWindowBlur = () => {
+      // Si la ventana pierde el foco, restablecer la tecla espacio
+      setEspacioPresionado(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, [onNuevoProyecto, onGuardarCambios, deshabilitado]);
+
+  return {
+    espacioPresionado,
+  };
+}

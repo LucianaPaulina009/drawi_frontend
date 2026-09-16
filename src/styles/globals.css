@@ -3,6 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "./theme.css";
 @import "./system.css";
+@import "@xyflow/react/dist/style.css";
 
 @custom-variant dark (&:is(.dark *));
 
