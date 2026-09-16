@@ -15,8 +15,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Ruta pública de bienvenida / landing
-  if (pathname === "/") {
+  // 2. Rutas públicas e intermedias
+  const esRutaUnirse =
+    pathname === "/unirse" ||
+    pathname.startsWith("/unirse/");
+
+  if (pathname === "/" || esRutaUnirse) {
     return NextResponse.next();
   }
 

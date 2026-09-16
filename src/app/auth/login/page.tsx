@@ -225,13 +225,17 @@ export default function LoginPage() {
         </div>
 
         {/* Form Elements */}
-        <LoginForm />
+        <Suspense fallback={<div className="h-48 flex items-center justify-center text-xs text-gray-400">Cargando formulario...</div>}>
+          <LoginForm />
+        </Suspense>
 
         {/* Divider with Text */}
         <FieldSeparator>o continuar con</FieldSeparator>
 
         {/* Social Login Circular Buttons */}
-        <SocialSignInButtons />
+        <Suspense fallback={<div className="h-12" />}>
+          <SocialSignInButtons />
+        </Suspense>
 
         {/* Registration Link */}
         <div className="mt-8 text-center">

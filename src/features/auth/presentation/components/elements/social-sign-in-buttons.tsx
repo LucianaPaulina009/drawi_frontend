@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 
 function GoogleIcon() {
@@ -33,10 +34,18 @@ function GitHubIcon() {
 }
 
 export default function SocialSignInButtons() {
+  const searchParams = useSearchParams();
+  const rawCallback =
+    searchParams.get("callbackURL") || searchParams.get("redirect");
+  const safeCallback =
+    rawCallback && rawCallback.startsWith("/") && !rawCallback.startsWith("//")
+      ? rawCallback
+      : "/proyectos";
+
   const handleGoogleSignIn = async () => {
     await authClient.signIn.social({
       provider: "google",
-      callbackURL: "/proyectos",
+      callbackURL: safeCallback,
       errorCallbackURL: "/auth/login?error=social",
     });
   };
@@ -44,7 +53,7 @@ export default function SocialSignInButtons() {
   const handleGitHubSignIn = async () => {
     await authClient.signIn.social({
       provider: "github",
-      callbackURL: "/proyectos",
+      callbackURL: safeCallback,
       errorCallbackURL: "/auth/login?error=social",
     });
   };

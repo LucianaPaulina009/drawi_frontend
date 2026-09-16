@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import TextFormField from "@/features/shared/presentation/components/forms/text-form-field";
@@ -15,7 +15,15 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div">) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const formRef = useRef<HTMLFormElement>(null);
+
+  const rawCallback =
+    searchParams.get("callbackURL") || searchParams.get("redirect");
+  const safeCallback =
+    rawCallback && rawCallback.startsWith("/") && !rawCallback.startsWith("//")
+      ? rawCallback
+      : "/proyectos";
 
   const handleSubmit = async (formData: FormData) => {
     const email = formData.get("email") as string;
@@ -25,14 +33,14 @@ export function LoginForm({
       {
         email,
         password,
-        callbackURL: "/proyectos",
+        callbackURL: safeCallback,
         rememberMe: false,
       },
       {
         onSuccess: () => {
           formRef.current?.reset();
           appToast.success("¡Bienvenido de vuelta!");
-          router.push("/proyectos");
+          router.push(safeCallback);
         },
         onError: (ctx) => {
           appToast.error(

@@ -28,6 +28,7 @@ export const ProyectoReadResponseSchema = z.object({
   fecha_actualizacion: z.string(),
   es_favorito: z.boolean(),
   slug: z.string(),
+  propietario_id: z.string().optional(),
 });
 
 export const ListaProyectosResponseSchema = z.object({

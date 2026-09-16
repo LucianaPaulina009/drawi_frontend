@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AuthLayout } from "../auth-layout";
 import { FieldSeparator } from "@/components/ui/field";
 import { SignupForm } from "@/features/auth/presentation/components/forms/signup-form";
@@ -387,13 +388,17 @@ export default function SignupPage() {
         </div>
 
         {/* Form Elements */}
-        <SignupForm />
+        <Suspense fallback={<div className="h-48 flex items-center justify-center text-xs text-gray-400">Cargando formulario...</div>}>
+          <SignupForm />
+        </Suspense>
 
         {/* Divider with Text */}
         <FieldSeparator>o registrarte con</FieldSeparator>
 
         {/* Social Login Circular Buttons */}
-        <SocialSignInButtons />
+        <Suspense fallback={<div className="h-12" />}>
+          <SocialSignInButtons />
+        </Suspense>
 
         {/* Login Link */}
         <div className="mt-8 text-center">

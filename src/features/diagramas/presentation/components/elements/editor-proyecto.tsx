@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter } from "next/navigation";
 import { ReactFlowProvider, type Viewport } from "@xyflow/react";
 
+import { authClient } from "@/lib/auth-client";
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
 import { crearProyectoAction } from "@/features/gestion-proyectos/presentation/actions/proyecto.action";
 import type { Proyecto } from "@/features/gestion-proyectos/domain/entities/proyecto.entity";
@@ -28,6 +29,7 @@ import { EditorHeader } from "./editor-header";
 import { LienzoDiagrama } from "./lienzo-diagrama";
 import { ModalEliminarPagina } from "./modal-eliminar-pagina";
 import { ModalRenombrarPagina } from "./modal-renombrar-pagina";
+import { ModalCompartirProyecto } from "@/features/gestion-proyectos/presentation/components/elements/modal-compartir-proyecto";
 
 export interface EditorProyectoProps {
   proyecto: Proyecto;
@@ -39,6 +41,13 @@ export function EditorProyecto({
   diagramasIniciales,
 }: EditorProyectoProps) {
   const router = useRouter();
+  const { data: session } = authClient.useSession();
+
+  const esUsuarioPropietario = Boolean(
+    session?.user?.id && proyecto.propietarioId
+      ? session.user.id === proyecto.propietarioId
+      : true
+  );
 
   // Lista de páginas en estado local
   const [diagramas, setDiagramas] = useState<Diagrama[]>(diagramasIniciales);
@@ -75,6 +84,8 @@ export function EditorProyecto({
     useState<Diagrama | null>(null);
   const [diagramaAEliminar, setDiagramaAEliminar] =
     useState<Diagrama | null>(null);
+  const [modalCompartirAbierto, setModalCompartirAbierto] =
+    useState<boolean>(false);
 
   // Estado de herramienta de navegación activa
   const [herramientaActiva, setHerramientaActiva] =
@@ -119,7 +130,9 @@ export function EditorProyecto({
   const { espacioPresionado } = useAtajosEditor({
     onNuevoProyecto: handleCrearProyecto,
     onGuardarCambios: handleGuardarCambios,
-    deshabilitado: Boolean(diagramaARenombrar || diagramaAEliminar),
+    deshabilitado: Boolean(
+      diagramaARenombrar || diagramaAEliminar || modalCompartirAbierto
+    ),
   });
 
   // Callback para registrar cambios en el viewport del diagrama activo
@@ -336,6 +349,7 @@ export function EditorProyecto({
           onEliminarPagina={setDiagramaAEliminar}
           onCrearProyecto={handleCrearProyecto}
           isCreandoProyecto={isCreandoProyecto}
+          onCompartir={() => setModalCompartirAbierto(true)}
         />
 
         {/* Lienzo Diagrama Central */}
@@ -360,6 +374,14 @@ export function EditorProyecto({
 
         {/* Asistente IA (Inferior Derecha) */}
         <ControlIA />
+
+        {/* Modal para compartir proyecto */}
+        <ModalCompartirProyecto
+          open={modalCompartirAbierto}
+          onOpenChange={setModalCompartirAbierto}
+          proyecto={proyecto}
+          esUsuarioPropietario={esUsuarioPropietario}
+        />
 
         {/* Modal para renombrar página */}
         <ModalRenombrarPagina

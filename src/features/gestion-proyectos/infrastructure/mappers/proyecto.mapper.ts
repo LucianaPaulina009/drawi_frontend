@@ -53,6 +53,7 @@ export const proyectoMapper = {
       fechaActualizacion: raw.fecha_actualizacion,
       esFavorito: raw.es_favorito,
       slug: raw.slug,
+      propietarioId: raw.propietario_id,
     };
   },
 

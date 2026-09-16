@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import TextFormField from "@/features/shared/presentation/components/forms/text-form-field";
 import { authClient } from "@/lib/auth-client";
@@ -14,7 +14,15 @@ export function SignupForm({
   ...props
 }: React.ComponentProps<"div">) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const formRef = useRef<HTMLFormElement>(null);
+
+  const rawCallback =
+    searchParams.get("callbackURL") || searchParams.get("redirect");
+  const safeCallback =
+    rawCallback && rawCallback.startsWith("/") && !rawCallback.startsWith("//")
+      ? rawCallback
+      : "/proyectos";
 
   const handleSubmit = async (formData: FormData) => {
     const name = formData.get("name") as string;
@@ -26,7 +34,7 @@ export function SignupForm({
         name,
         email,
         password,
-        callbackURL: "/proyectos",
+        callbackURL: safeCallback,
       },
       {
         onSuccess: () => {

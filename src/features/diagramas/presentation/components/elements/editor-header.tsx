@@ -43,6 +43,7 @@ export interface EditorHeaderProps {
   onEliminarPagina: (diagrama: Diagrama) => void;
   onCrearProyecto?: () => void;
   isCreandoProyecto?: boolean;
+  onCompartir?: () => void;
 }
 
 export function EditorHeader({
@@ -56,6 +57,7 @@ export function EditorHeader({
   onEliminarPagina,
   onCrearProyecto,
   isCreandoProyecto,
+  onCompartir,
 }: EditorHeaderProps) {
   const router = useRouter();
   const [mostrarPaginas, setMostrarPaginas] = useState<boolean>(true);
@@ -299,7 +301,8 @@ export function EditorHeader({
         {/* Compartir */}
         <button
           type="button"
-          className="flex h-10 items-center space-x-2 rounded-lg bg-[#91bcfb] px-5 text-xs font-bold text-[#003c70] shadow-xs transition-all hover:bg-[#7ab1f9] active:scale-95"
+          onClick={onCompartir}
+          className="flex h-10 items-center space-x-2 rounded-lg bg-[#91bcfb] px-5 text-xs font-bold text-[#003c70] shadow-xs transition-all hover:bg-[#7ab1f9] active:scale-95 cursor-pointer"
           title="Compartir proyecto"
           aria-label="Compartir"
         >
