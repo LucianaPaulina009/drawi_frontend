@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Proyecto } from "../../../domain/entities/proyecto.entity";
+import type { Proyecto } from "@/features/gestion-proyectos/domain/entities/proyecto.entity";
 import { ListaMiembrosModal } from "./lista-miembros-modal";
 import { SeccionInvitacionModal } from "./seccion-invitacion-modal";
 

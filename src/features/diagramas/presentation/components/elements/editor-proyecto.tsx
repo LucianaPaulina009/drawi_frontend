@@ -52,7 +52,7 @@ import { ModalEliminarPagina } from "./modal-eliminar-pagina";
 import { ModalRenombrarPagina } from "./modal-renombrar-pagina";
 import { ModalEliminarClase } from "./modal-eliminar-clase";
 import { ModalEliminarAtributo } from "./modal-eliminar-atributo";
-import { ModalCompartirProyecto } from "@/features/gestion-proyectos/presentation/components/elements/modal-compartir-proyecto";
+import { ModalCompartirProyecto } from "@/features/gestion-colaboradores/presentation/components/elements/modal-compartir-proyecto";
 
 export interface EditorProyectoProps {
   proyecto: Proyecto;

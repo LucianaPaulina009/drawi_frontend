@@ -6,8 +6,8 @@ import type { Proyecto } from "@/features/gestion-proyectos/domain/entities/proy
 import type {
   MiembroProyecto,
   RolColaborador,
-} from "@/features/gestion-proyectos/domain/entities/colaborador.entity";
-import { listarMiembrosAction } from "@/features/gestion-proyectos/presentation/actions/colaborador.action";
+} from "@/features/gestion-colaboradores/domain/entities/colaborador.entity";
+import { listarMiembrosAction } from "@/features/gestion-colaboradores/presentation/actions/colaborador.action";
 
 export interface PermisoEdicionDiagrama {
   puedeEditar: boolean;

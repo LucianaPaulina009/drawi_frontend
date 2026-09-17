@@ -14,11 +14,11 @@ import {
 
 import { authClient } from "@/lib/auth-client";
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
-import type { ValidacionInvitacion } from "@/features/gestion-proyectos/domain/entities/invitacion.entity";
+import type { ValidacionInvitacion } from "@/features/gestion-colaboradores/domain/entities/invitacion.entity";
 import {
   unirseProyectoAction,
   validarInvitacionAction,
-} from "@/features/gestion-proyectos/presentation/actions/invitacion.action";
+} from "@/features/gestion-colaboradores/presentation/actions/invitacion.action";
 
 interface UnirsePageProps {
   params: Promise<{ codigo: string }>;
