@@ -1,3 +1,4 @@
+import dns from "node:dns";
 import { betterAuth } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { Pool } from "pg";
@@ -6,6 +7,10 @@ import {
   sendPasswordResetEmail,
 } from "@/lib/email";
 
+// Forzar orden de resolución IPv4 primero en Node.js para evitar cuelgues o ENOTFOUND en hosts dual-stack (Neon / AWS)
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder("ipv4first");
+}
 
 /**
  * Pool de conexión a PostgreSQL reutilizado por auth.

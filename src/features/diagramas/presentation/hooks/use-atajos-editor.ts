@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 export interface UseAtajosEditorOptions {
   onNuevoProyecto?: () => void;
   onGuardarCambios?: () => void;
+  onEliminarSeleccion?: () => void;
+  onDuplicarSeleccion?: () => void;
   deshabilitado?: boolean;
 }
 
@@ -40,6 +42,8 @@ function esElementoExcluido(target: EventTarget | null): boolean {
 export function useAtajosEditor({
   onNuevoProyecto,
   onGuardarCambios,
+  onEliminarSeleccion,
+  onDuplicarSeleccion,
   deshabilitado = false,
 }: UseAtajosEditorOptions = {}) {
   const [espacioPresionado, setEspacioPresionado] = useState(false);
@@ -83,6 +87,29 @@ export function useAtajosEditor({
         onGuardarCambios?.();
         return;
       }
+
+      // 4. Atajo Ctrl+D / Cmd+D (Duplicar selección de atributo)
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        (event.key === "d" || event.key === "D") &&
+        !event.repeat
+      ) {
+        event.preventDefault();
+        onDuplicarSeleccion?.();
+        return;
+      }
+
+      // 5. Atajo Delete / Supr / Backspace para eliminar selección
+      if (
+        (event.key === "Delete" ||
+          event.key === "Backspace" ||
+          event.code === "Delete") &&
+        !event.repeat
+      ) {
+        event.preventDefault();
+        onEliminarSeleccion?.();
+        return;
+      }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -105,7 +132,13 @@ export function useAtajosEditor({
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [onNuevoProyecto, onGuardarCambios, deshabilitado]);
+  }, [
+    onNuevoProyecto,
+    onGuardarCambios,
+    onEliminarSeleccion,
+    onDuplicarSeleccion,
+    deshabilitado,
+  ]);
 
   return {
     espacioPresionado,

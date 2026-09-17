@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ClaseReadResponseSchema } from "./clase.schemas";
 
 // ── Esquemas de Lectura (snake_case desde Backend) ───────────────────────────
 
@@ -18,7 +19,7 @@ export const DiagramaDetalleResponseSchema = z.object({
   id_proyecto: z.string(),
   nombre: z.string(),
   numero: z.number().int(),
-  clases: z.array(z.unknown()).optional().default([]),
+  clases: z.array(ClaseReadResponseSchema).optional().default([]),
 });
 
 // ── Esquemas de Mutación / Petición ──────────────────────────────────────────

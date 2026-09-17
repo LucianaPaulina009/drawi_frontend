@@ -1,3 +1,5 @@
+import type { Clase } from "./clase.entity";
+
 export interface Diagrama {
   id: string;
   idProyecto: string;
@@ -10,6 +12,7 @@ export interface DiagramaDetalle {
   idProyecto: string;
   nombre: string;
   readonly numero: number;
+  clases: Clase[];
 }
 
 export interface CrearDiagramaData {

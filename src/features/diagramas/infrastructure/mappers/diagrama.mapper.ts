@@ -9,6 +9,7 @@ import type {
   DiagramaReadResponseSchema,
   ListaDiagramasResponseSchema,
 } from "../schemas/diagrama.schemas";
+import { claseMapper } from "./clase.mapper";
 
 export const diagramaMapper = {
   toDiagrama(raw: z.infer<typeof DiagramaReadResponseSchema>): Diagrama {
@@ -29,11 +30,13 @@ export const diagramaMapper = {
   toDiagramaDetalle(
     raw: z.infer<typeof DiagramaDetalleResponseSchema>
   ): DiagramaDetalle {
+    const rawClases = raw.clases || [];
     return {
       id: raw.id,
       idProyecto: raw.id_proyecto,
       nombre: raw.nombre,
       numero: raw.numero,
+      clases: rawClases.map(claseMapper.toClase),
     };
   },
 
