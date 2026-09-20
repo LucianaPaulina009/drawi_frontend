@@ -453,6 +453,7 @@ export const LienzoDiagrama = memo(function LienzoDiagrama({
         edges={edges}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
+        proOptions={{ hideAttribution: true }}
         defaultViewport={viewportInicial}
         onViewportChange={onViewportChange}
         translateExtent={AREA_TRABAJO_EXTENT}

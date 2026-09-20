@@ -35,7 +35,7 @@ import { useAtajosEditor } from "../../hooks/use-atajos-editor";
 import { usePermisoEdicionDiagrama } from "../../hooks/use-permiso-edicion-diagrama";
 import { BarraHerramientas, type HerramientaLienzo } from "./barra-herramientas";
 import { ControlesZoom } from "./controles-zoom";
-import { ControlIA } from "./control-ia";
+import { AsistenteIaEditor } from "@/features/inteligencia-artificial/presentation/components/elements/asistente-ia-editor";
 import { EditorHeader } from "./editor-header";
 import { LienzoDiagrama } from "./lienzo-diagrama";
 import {
@@ -207,7 +207,37 @@ export function EditorProyecto({
     diagramaId: diagramaActivoId,
     habilitado: Boolean(diagramaActivoId),
   });
-  const [panelPropiedadesAbierto, setPanelPropiedadesAbierto] = useState(false);
+
+  // Estado del Panel Lateral Contextual de Propiedades
+  const [modoPanel, setModoPanel] = useState<ModoPanelPropiedades>("clase");
+  const [atributoSeleccionadoId, setAtributoSeleccionadoId] = useState<
+    string | null
+  >(null);
+
+  // Exclusividad de paneles principales (propiedades vs IA)
+  const [panelPrincipal, setPanelPrincipal] = useState<"propiedades" | "ia" | null>(null);
+  const panelPropiedadesAbierto = panelPrincipal === "propiedades";
+  const panelIaAbierto = panelPrincipal === "ia";
+
+  const setPanelPropiedadesAbierto = useCallback((abierto: boolean) => {
+    setPanelPrincipal(abierto ? "propiedades" : null);
+  }, []);
+
+  const handleAbrirIa = useCallback(() => {
+    const idActual = useEditorDiagramaStore.getState().claseSeleccionadaId;
+    if (idActual) {
+      colaboracionSocketService.liberarBloqueoClase(idActual);
+    }
+    setClaseSeleccionadaId(null);
+    setAtributoSeleccionadoId(null);
+    setRelacionSeleccionadaId(null);
+    setPanelPrincipal("ia");
+  }, [setClaseSeleccionadaId, setAtributoSeleccionadoId, setRelacionSeleccionadaId]);
+
+  const handleCerrarIa = useCallback(() => {
+    setPanelPrincipal((prev) => (prev === "ia" ? null : prev));
+  }, []);
+
   useBloqueoClase(panelPropiedadesAbierto ? claseSeleccionadaId : null);
   const [tipoRelacionPendiente, setTipoRelacionPendiente] = useState<
     TipoRelacion | undefined
@@ -222,12 +252,6 @@ export function EditorProyecto({
     null
   );
   const [relacionNmPendiente, setRelacionNmPendiente] = useState<RelacionNmPendiente | null>(null);
-
-  // Estado del Panel Lateral Contextual de Propiedades
-  const [modoPanel, setModoPanel] = useState<ModoPanelPropiedades>("clase");
-  const [atributoSeleccionadoId, setAtributoSeleccionadoId] = useState<
-    string | null
-  >(null);
 
   const [idDiagramaConError, setIdDiagramaConError] = useState<string | null>(
     null
@@ -442,7 +466,7 @@ export function EditorProyecto({
     setAtributoSeleccionadoId(null);
     setPanelPropiedadesAbierto(false);
     setIdDiagramaConError(null);
-  }, [diagramaActivoId]);
+  }, [diagramaActivoId, setPanelPropiedadesAbierto]);
 
   const detalleVisible =
     detalleActivo?.id === diagramaActivoId ? detalleActivo : null;
@@ -894,7 +918,13 @@ export function EditorProyecto({
         appToast.error("Error", "No se pudo crear el atributo.");
       }
     },
-    [puedeEditar, diagramaActivoId, encolarOperacion, setClaseSeleccionadaId]
+    [
+      puedeEditar,
+      diagramaActivoId,
+      encolarOperacion,
+      setClaseSeleccionadaId,
+      setPanelPropiedadesAbierto,
+    ]
   );
 
   const handleSeleccionarAtributo = useCallback((atributo: Atributo) => {
@@ -1180,6 +1210,7 @@ export function EditorProyecto({
       cardinalidadesPendientes,
       encolarOperacion,
       setRelacionSeleccionadaId,
+      setPanelPropiedadesAbierto,
     ]
   );
 
@@ -1308,7 +1339,13 @@ export function EditorProyecto({
         appToast.error("Error", "No se pudo registrar la relación con FK.");
       }
     },
-    [relacionPendienteFk, diagramaActivoId, encolarOperacion, setRelacionSeleccionadaId]
+    [
+      relacionPendienteFk,
+      diagramaActivoId,
+      encolarOperacion,
+      setRelacionSeleccionadaId,
+      setPanelPropiedadesAbierto,
+    ]
   );
 
   // Renombrado inline exclusivo para relación de tipo Asociación (T038)
@@ -1523,8 +1560,13 @@ export function EditorProyecto({
           onCambiarHerramienta={setHerramientaActiva}
         />
 
-        {/* Asistente IA (Inferior Derecha) */}
-        <ControlIA />
+        {/* Asistente IA DRAWI (Inferior Derecha) */}
+        <AsistenteIaEditor
+          diagramaId={diagramaActivoId}
+          abierto={panelIaAbierto}
+          onAbrir={handleAbrirIa}
+          onCerrar={handleCerrarIa}
+        />
 
         {/* Modal para compartir proyecto */}
         <ModalCompartirProyecto
