@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
@@ -27,10 +26,13 @@ import {
 import { authClient } from "@/lib/auth-client";
 import { clearJWT } from "@/features/shared/infrastructure/http/jwt-manager";
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
+import { AppAlertDialog } from "@/features/shared/presentation/components/dialogs/app-alert-dialog";
 import { crearProyectoAction } from "@/features/gestion-proyectos/presentation/actions/proyecto.action";
 import type { Proyecto } from "@/features/gestion-proyectos/domain/entities/proyecto.entity";
 import type { Diagrama } from "../../../domain/entities/diagrama.entity";
 import { NavegacionPaginas } from "./navegacion-paginas";
+import { EstadoSincronizacionEditor } from "./estado-sincronizacion-editor";
+import { useSalidaEditorPendiente } from "../../hooks/use-salida-editor-pendiente";
 
 export interface EditorHeaderProps {
   proyecto: Proyecto;
@@ -67,6 +69,14 @@ export function EditorHeader({
 
   const { data: session, isPending: isSessionPending } = authClient.useSession();
 
+  const {
+    modalSalidaAbierto,
+    setModalSalidaAbierto,
+    solicitarSalida,
+    confirmarSalida,
+    totalPendientes,
+  } = useSalidaEditorPendiente(session?.user?.id);
+
   const userInitials = session?.user?.name
     ? session.user.name
         .split(" ")
@@ -98,18 +108,26 @@ export function EditorHeader({
     });
   };
 
-  const handleSignOut = async () => {
-    clearJWT();
-    const { error } = await authClient.signOut();
-    if (error) {
-      appToast.error(
-        "Error al cerrar sesión",
-        "Tuvimos un error al cerrar tu sesión."
-      );
-      return;
-    }
-    appToast.info("Cerrando sesión. Hasta luego!");
-    router.replace("/auth/login");
+  const handleSignOut = () => {
+    solicitarSalida(async () => {
+      clearJWT();
+      const { error } = await authClient.signOut();
+      if (error) {
+        appToast.error(
+          "Error al cerrar sesión",
+          "Tuvimos un error al cerrar tu sesión."
+        );
+        return;
+      }
+      appToast.info("Cerrando sesión. Hasta luego!");
+      router.replace("/auth/login");
+    });
+  };
+
+  const handleIrAProyectos = () => {
+    solicitarSalida(() => {
+      router.push("/proyectos");
+    });
   };
 
   return (
@@ -189,16 +207,14 @@ export function EditorHeader({
               </DropdownMenuItem>
 
               {/* Acción: Todos los proyectos */}
-              <DropdownMenuItem asChild>
-                <Link
-                  href="/proyectos"
-                  className="flex items-center justify-between px-3 py-2 rounded-xl text-slate-700 hover:bg-slate-50 cursor-pointer focus:bg-slate-100"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Folder className="h-4 w-4 text-slate-500" />
-                    <span className="text-xs font-medium">Todos los proyectos</span>
-                  </div>
-                </Link>
+              <DropdownMenuItem
+                onClick={handleIrAProyectos}
+                className="flex items-center justify-between px-3 py-2 rounded-xl text-slate-700 hover:bg-slate-50 cursor-pointer focus:bg-slate-100"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Folder className="h-4 w-4 text-slate-500" />
+                  <span className="text-xs font-medium">Todos los proyectos</span>
+                </div>
               </DropdownMenuItem>
 
               <DropdownMenuSeparator className="-mx-1 my-1.5 h-px bg-slate-100" />
@@ -276,6 +292,8 @@ export function EditorHeader({
 
       {/* Cápsula Flotante Superior Derecha */}
       <div className="pointer-events-auto flex h-14 items-center space-x-2 rounded-2xl border border-slate-200 bg-white px-3 shadow-md">
+        <EstadoSincronizacionEditor className="shrink-0" />
+
         {/* Ayuda */}
         <button
           type="button"
@@ -310,6 +328,17 @@ export function EditorHeader({
           <span>Compartir</span>
         </button>
       </div>
+
+      {/* Diálogo accesible de confirmación de salida cuando hay operaciones pendientes */}
+      <AppAlertDialog
+        open={modalSalidaAbierto}
+        onOpenChange={setModalSalidaAbierto}
+        title="Cambios pendientes de sincronización"
+        description={`Tienes ${totalPendientes} operación(es) pendiente(s) de sincronizar con el servidor. Se conservarán en este dispositivo, pero no se han confirmado en el servidor todavía. ¿Deseas salir de todas formas?`}
+        cancelText="Permanecer en el editor"
+        actionText="Salir de todos modos"
+        onAction={confirmarSalida}
+      />
     </header>
   );
 }

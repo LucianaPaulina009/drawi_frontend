@@ -237,20 +237,24 @@ function VistaPropiedadesClase({
     }
   };
 
-  const atributos = clase.atributos || [];
+  const atributos = [...(clase.atributos || [])].sort(
+    (izquierdo, derecho) =>
+      izquierdo.ordenDePosicion - derecho.ordenDePosicion ||
+      izquierdo.id.localeCompare(derecho.id)
+  );
 
   const handleMoverArriba = (atributo: Atributo) => {
     const index = atributos.findIndex((a) => a.id === atributo.id);
-    if (index > 0) {
-      const nuevoOrden = atributos[index - 1].ordenDePosicion;
+    if (!atributo.esLlavePrimaria && index > 1) {
+      const nuevoOrden = index;
       onReordenarAtributo(clase.id, atributo.id, nuevoOrden);
     }
   };
 
   const handleMoverAbajo = (atributo: Atributo) => {
     const index = atributos.findIndex((a) => a.id === atributo.id);
-    if (index < atributos.length - 1) {
-      const nuevoOrden = atributos[index + 1].ordenDePosicion;
+    if (!atributo.esLlavePrimaria && index < atributos.length - 1) {
+      const nuevoOrden = index + 2;
       onReordenarAtributo(clase.id, atributo.id, nuevoOrden);
     }
   };
@@ -313,11 +317,6 @@ function VistaPropiedadesClase({
             onChange={(e) => {
               setNombre(e.target.value);
               if (errorNombre) setErrorNombre(null);
-            }}
-            onBlur={() => {
-              if (nombre.trim() && nombre.trim() !== clase.nombre) {
-                handleGuardarNombre();
-              }
             }}
             disabled={!puedeEditar || isPending || guardandoNombre}
             maxLength={50}
@@ -405,14 +404,9 @@ function VistaPropiedadesClase({
                         PK
                       </span>
                     )}
-                    {!attr.permiteNulo && !attr.esLlavePrimaria && (
-                      <span className="rounded bg-slate-100 px-1 py-0.2 text-[9px] font-medium text-slate-600">
-                        NN
-                      </span>
-                    )}
-                    {attr.esUnico && (
-                      <span className="rounded bg-[#f3e8ff] px-1 py-0.2 text-[9px] font-bold text-[#6b21a8]">
-                        UQ
+                    {attr.procedencia === "sistema_fk" && (
+                      <span className="rounded bg-[#e0f2fe] px-1 py-0.2 text-[9px] font-bold text-[#003c70]">
+                        FK
                       </span>
                     )}
                   </div>
@@ -426,7 +420,7 @@ function VistaPropiedadesClase({
                       <button
                         type="button"
                         onClick={() => handleMoverArriba(attr)}
-                        disabled={idx === 0}
+                        disabled={attr.esLlavePrimaria || idx <= 1}
                         className="flex size-5 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30"
                         title="Mover arriba"
                       >
@@ -435,7 +429,7 @@ function VistaPropiedadesClase({
                       <button
                         type="button"
                         onClick={() => handleMoverAbajo(attr)}
-                        disabled={idx === atributos.length - 1}
+                        disabled={attr.esLlavePrimaria || idx === atributos.length - 1}
                         className="flex size-5 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30"
                         title="Mover abajo"
                       >
@@ -541,7 +535,13 @@ function VistaFormularioAtributo({
   const [errorPrecision, setErrorPrecision] = useState<string | null>(null);
   const [errorEscala, setErrorEscala] = useState<string | null>(null);
 
+  // Detección de naturaleza estructural del atributo
+  const esPk = Boolean(atributoInicial?.esLlavePrimaria);
+  const esFk = Boolean(atributoInicial?.procedencia === "sistema_fk");
+  const esEstructuralBloqueado = esPk || esFk;
+
   const handlePkChange = (checked: boolean) => {
+    if (esEstructuralBloqueado || !esPk) return;
     setEsLlavePrimaria(checked);
     if (checked) {
       setPermiteNulo(false);
@@ -549,6 +549,7 @@ function VistaFormularioAtributo({
   };
 
   const handleTipoChange = (nuevoTipo: TipoDato) => {
+    if (esEstructuralBloqueado) return;
     setTipoDato(nuevoTipo);
     setErrorLongitud(null);
     setErrorPrecision(null);
@@ -691,7 +692,7 @@ function VistaFormularioAtributo({
           <SelectorTipoDato
             value={tipoDato}
             onChange={handleTipoChange}
-            disabled={!puedeEditar || isPending}
+            disabled={!puedeEditar || isPending || esEstructuralBloqueado}
           />
         </div>
 
@@ -715,7 +716,7 @@ function VistaFormularioAtributo({
                 setLongitud(e.target.value);
                 if (errorLongitud) setErrorLongitud(null);
               }}
-              disabled={!puedeEditar || isPending}
+              disabled={!puedeEditar || isPending || esEstructuralBloqueado}
               className="h-8 rounded-xl text-xs"
             />
             {errorLongitud && (
@@ -747,7 +748,7 @@ function VistaFormularioAtributo({
                   setPrecision(e.target.value);
                   if (errorPrecision) setErrorPrecision(null);
                 }}
-                disabled={!puedeEditar || isPending}
+                disabled={!puedeEditar || isPending || esEstructuralBloqueado}
                 className="h-8 rounded-xl text-xs"
               />
               {errorPrecision && (
@@ -774,7 +775,7 @@ function VistaFormularioAtributo({
                   setEscala(e.target.value);
                   if (errorEscala) setErrorEscala(null);
                 }}
-                disabled={!puedeEditar || isPending}
+                disabled={!puedeEditar || isPending || esEstructuralBloqueado}
                 className="h-8 rounded-xl text-xs"
               />
               {errorEscala && (
@@ -788,12 +789,12 @@ function VistaFormularioAtributo({
 
         {/* Modificadores Principales: Llave primaria y Permite nulos */}
         <div className="space-y-2 pt-1 border-t border-slate-100">
-          <label className="flex items-center gap-2 cursor-pointer">
+          <label className="flex items-center gap-2 cursor-not-allowed opacity-75">
             <input
               type="checkbox"
               checked={esLlavePrimaria}
               onChange={(e) => handlePkChange(e.target.checked)}
-              disabled={!puedeEditar || isPending}
+              disabled={true}
               className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-xs font-medium text-slate-800">
@@ -804,7 +805,7 @@ function VistaFormularioAtributo({
           <label
             className={cn(
               "flex items-center gap-2",
-              esLlavePrimaria
+              esLlavePrimaria || esEstructuralBloqueado
                 ? "cursor-not-allowed opacity-50"
                 : "cursor-pointer"
             )}
@@ -813,7 +814,7 @@ function VistaFormularioAtributo({
               type="checkbox"
               checked={esLlavePrimaria ? false : permiteNulo}
               onChange={(e) => setPermiteNulo(e.target.checked)}
-              disabled={!puedeEditar || isPending || esLlavePrimaria}
+              disabled={!puedeEditar || isPending || esLlavePrimaria || esEstructuralBloqueado}
               className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-xs text-slate-700">
@@ -839,12 +840,19 @@ function VistaFormularioAtributo({
 
           {mostrarAvanzadas && (
             <div className="space-y-2.5 pt-2 animate-in fade-in duration-150">
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label
+                className={cn(
+                  "flex items-center gap-2",
+                  esEstructuralBloqueado
+                    ? "cursor-not-allowed opacity-50"
+                    : "cursor-pointer"
+                )}
+              >
                 <input
                   type="checkbox"
                   checked={esUnico}
                   onChange={(e) => setEsUnico(e.target.checked)}
-                  disabled={!puedeEditar || isPending}
+                  disabled={!puedeEditar || isPending || esEstructuralBloqueado}
                   className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-xs text-slate-700">
@@ -866,7 +874,7 @@ function VistaFormularioAtributo({
                   placeholder="Ej. 'activo', 0"
                   value={valorPorDefecto}
                   onChange={(e) => setValorPorDefecto(e.target.value)}
-                  disabled={!puedeEditar || isPending}
+                  disabled={!puedeEditar || isPending || esEstructuralBloqueado}
                   className="h-8 rounded-xl text-xs"
                 />
               </div>

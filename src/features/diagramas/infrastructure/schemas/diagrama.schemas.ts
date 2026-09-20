@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ClaseReadResponseSchema } from "./clase.schemas";
+import { RelacionReadResponseSchema } from "./relacion.schemas";
 
 // ── Esquemas de Lectura (snake_case desde Backend) ───────────────────────────
 
@@ -20,6 +21,12 @@ export const DiagramaDetalleResponseSchema = z.object({
   nombre: z.string(),
   numero: z.number().int(),
   clases: z.array(ClaseReadResponseSchema).optional().default([]),
+  relaciones: z.array(RelacionReadResponseSchema).optional().default([]),
+  estructuras_nm: z.array(z.object({
+    id: z.string().uuid(), id_diagrama: z.string().uuid(), id_clase_origen: z.string().uuid(),
+    id_clase_destino: z.string().uuid(), id_clase_intermedia: z.string().uuid(),
+    id_relacion_origen: z.string().uuid(), id_relacion_destino: z.string().uuid(),
+  })).optional().default([]),
 });
 
 // ── Esquemas de Mutación / Petición ──────────────────────────────────────────

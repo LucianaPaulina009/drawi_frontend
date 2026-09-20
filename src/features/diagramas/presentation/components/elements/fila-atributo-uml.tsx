@@ -9,6 +9,7 @@ export interface FilaAtributoUmlProps {
   atributo: Atributo;
   puedeEditar?: boolean;
   onSeleccionar: (atributo: Atributo) => void;
+  onAbrirPropiedades?: (atributo: Atributo) => void;
   onCopiar?: (atributo: Atributo) => void;
 }
 
@@ -16,6 +17,7 @@ export const FilaAtributoUml = memo(function FilaAtributoUml({
   atributo,
   puedeEditar = true,
   onSeleccionar,
+  onAbrirPropiedades,
   onCopiar,
 }: FilaAtributoUmlProps) {
   // Formatear tipo de dato de forma compacta
@@ -43,13 +45,17 @@ export const FilaAtributoUml = memo(function FilaAtributoUml({
         e.stopPropagation();
         onSeleccionar(atributo);
       }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onAbrirPropiedades?.(atributo);
+      }}
       className={cn(
         "group/row relative flex items-center justify-between gap-1 px-3 py-1 text-xs transition-colors hover:bg-slate-50 cursor-pointer",
         atributo.esLlavePrimaria && "bg-blue-50/30"
       )}
-      title="Clic para ver o editar propiedades"
+      title="Clic simple para seleccionar, doble clic para editar propiedades"
     >
-      {/* Zona Izquierda/Central: Indicador + Nombre + Tipo + Badges (layout compacto sin espacios excesivos) */}
+      {/* Zona Izquierda/Central: Indicador + Nombre + Tipo + Badges */}
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
         {atributo.esLlavePrimaria ? (
           <span title="Llave primaria" aria-label="Llave primaria">
@@ -85,20 +91,13 @@ export const FilaAtributoUml = memo(function FilaAtributoUml({
               PK
             </span>
           )}
-          {!atributo.permiteNulo && !atributo.esLlavePrimaria && (
+          {atributo.procedencia === "sistema_fk" && (
             <span
-              className="inline-flex items-center rounded bg-slate-100 px-1 py-0 text-[8.5px] font-medium text-slate-600"
-              title="No permite nulos"
+              className="inline-flex items-center rounded bg-[#e0f2fe] px-1 py-0 text-[8.5px] font-bold text-[#003c70]"
+              title="Llave foránea"
+              aria-label="Llave foránea"
             >
-              NN
-            </span>
-          )}
-          {atributo.esUnico && (
-            <span
-              className="inline-flex items-center rounded bg-[#f3e8ff] px-1 py-0 text-[8.5px] font-bold text-[#6b21a8]"
-              title="Único"
-            >
-              UQ
+              FK
             </span>
           )}
         </div>

@@ -27,7 +27,7 @@ export function ModalEliminarClase({
         }
       }}
       title="¿Eliminar clase UML?"
-      description={`¿Estás seguro de que deseas eliminar la clase "${clase.nombre}" y todos sus atributos asociados? Esta acción no se puede deshacer.`}
+      description={`¿Estás seguro de que deseas eliminar la clase "${clase.nombre}"? Esta acción eliminará sus atributos, las relaciones conectadas y las estructuras intermedias vinculadas. No se puede deshacer.`}
       cancelText="Cancelar"
       actionText={isPending ? "Eliminando..." : "Eliminar clase"}
       onAction={onConfirmar}

@@ -8,6 +8,8 @@ export type TipoDato =
   | "date"
   | "timestamp";
 
+export type ProcedenciaAtributo = "manual" | "sistema_clase" | "sistema_fk";
+
 export const TIPOS_DATO: readonly TipoDato[] = [
   "integer",
   "bigint",
@@ -32,6 +34,7 @@ export interface Atributo {
   esUnico: boolean;
   valorPorDefecto: string | null;
   ordenDePosicion: number;
+  procedencia: ProcedenciaAtributo;
 }
 
 export interface CrearAtributoData {

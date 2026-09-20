@@ -7,6 +7,10 @@ export interface UseAtajosEditorOptions {
   onGuardarCambios?: () => void;
   onEliminarSeleccion?: () => void;
   onDuplicarSeleccion?: () => void;
+  onCancelarInteraccion?: () => void;
+  /** Las operaciones de historial se conectarán únicamente cuando existan. */
+  onDeshacer?: () => void;
+  onRehacer?: () => void;
   deshabilitado?: boolean;
 }
 
@@ -44,6 +48,9 @@ export function useAtajosEditor({
   onGuardarCambios,
   onEliminarSeleccion,
   onDuplicarSeleccion,
+  onCancelarInteraccion,
+  onDeshacer,
+  onRehacer,
   deshabilitado = false,
 }: UseAtajosEditorOptions = {}) {
   const [espacioPresionado, setEspacioPresionado] = useState(false);
@@ -110,6 +117,24 @@ export function useAtajosEditor({
         onEliminarSeleccion?.();
         return;
       }
+
+      // 6. Escape retorna de una herramienta transitoria a Selección.
+      if (event.key === "Escape" && !event.repeat) {
+        onCancelarInteraccion?.();
+        return;
+      }
+
+      // No se finge historial: estas combinaciones solamente se consumen
+      // cuando una implementación real de deshacer/rehacer las provee.
+      if ((event.ctrlKey || event.metaKey) && !event.repeat && event.key.toLowerCase() === "z" && onDeshacer) {
+        event.preventDefault();
+        onDeshacer();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && !event.repeat && event.key.toLowerCase() === "y" && onRehacer) {
+        event.preventDefault();
+        onRehacer();
+      }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -136,6 +161,9 @@ export function useAtajosEditor({
     onNuevoProyecto,
     onGuardarCambios,
     onEliminarSeleccion,
+    onCancelarInteraccion,
+    onDeshacer,
+    onRehacer,
     onDuplicarSeleccion,
     deshabilitado,
   ]);

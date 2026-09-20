@@ -1,4 +1,6 @@
 import type { Clase } from "./clase.entity";
+import type { Relacion } from "./relacion.entity";
+import type { EstructuraRelacionNm } from "./estructura-relacion-nm.entity";
 
 export interface Diagrama {
   id: string;
@@ -13,6 +15,8 @@ export interface DiagramaDetalle {
   nombre: string;
   readonly numero: number;
   clases: Clase[];
+  relaciones: Relacion[];
+  estructurasNm: EstructuraRelacionNm[];
 }
 
 export interface CrearDiagramaData {

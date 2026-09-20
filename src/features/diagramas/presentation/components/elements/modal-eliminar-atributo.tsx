@@ -18,6 +18,20 @@ export function ModalEliminarAtributo({
 }: ModalEliminarAtributoProps) {
   if (!atributo) return null;
 
+  if (atributo.procedencia === "sistema_fk") {
+    return (
+      <AppAlertDialog
+        open
+        onOpenChange={onOpenChange}
+        title="Acción no permitida"
+        description="No se puede eliminar la clave foránea. Elimina la relación que la materializa."
+        cancelText="Cerrar"
+        actionText="Entendido"
+        onAction={() => onOpenChange(false)}
+      />
+    );
+  }
+
   return (
     <AppAlertDialog
       open={Boolean(atributo)}

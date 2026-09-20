@@ -10,6 +10,7 @@ import type {
   ListaDiagramasResponseSchema,
 } from "../schemas/diagrama.schemas";
 import { claseMapper } from "./clase.mapper";
+import { relacionMapper } from "./relacion.mapper";
 
 export const diagramaMapper = {
   toDiagrama(raw: z.infer<typeof DiagramaReadResponseSchema>): Diagrama {
@@ -37,6 +38,13 @@ export const diagramaMapper = {
       nombre: raw.nombre,
       numero: raw.numero,
       clases: rawClases.map(claseMapper.toClase),
+      relaciones: raw.relaciones.map(relacionMapper.toRelacion),
+      estructurasNm: raw.estructuras_nm.map((estructura) => ({
+        id: estructura.id, idDiagrama: estructura.id_diagrama,
+        idClaseOrigen: estructura.id_clase_origen, idClaseDestino: estructura.id_clase_destino,
+        idClaseIntermedia: estructura.id_clase_intermedia,
+        idRelacionOrigen: estructura.id_relacion_origen, idRelacionDestino: estructura.id_relacion_destino,
+      })),
     };
   },
 

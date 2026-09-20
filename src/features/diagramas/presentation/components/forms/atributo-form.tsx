@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 import TextFormField from "@/features/shared/presentation/components/forms/text-form-field";
 import {
   TIPOS_DATO,
@@ -59,12 +60,18 @@ export function AtributoForm({
   const [errorPrecision, setErrorPrecision] = useState<string | null>(null);
   const [errorEscala, setErrorEscala] = useState<string | null>(null);
 
+  const esPk = Boolean(atributoInicial?.esLlavePrimaria);
+  const esFk = Boolean(atributoInicial?.procedencia === "sistema_fk");
+  const esEstructuralBloqueado = esPk || esFk;
+
   const handleTipoChange = (nuevoTipo: TipoDato) => {
+    if (esEstructuralBloqueado) return;
     setTipoDato(nuevoTipo);
     setErrorTipo(null);
   };
 
   const handlePkChange = (checked: boolean) => {
+    if (esEstructuralBloqueado || !esPk) return;
     setEsLlavePrimaria(checked);
     if (checked) {
       setPermiteNulo(false);
@@ -174,7 +181,7 @@ export function AtributoForm({
           id="tipo-dato-select"
           value={tipoDato}
           onChange={(e) => handleTipoChange(e.target.value as TipoDato)}
-          disabled={isPending}
+          disabled={isPending || esEstructuralBloqueado}
           className="flex h-10 w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
           {TIPOS_DATO.map((tipo) => (
@@ -204,7 +211,7 @@ export function AtributoForm({
               setLongitud(e.target.value);
               if (errorLongitud) setErrorLongitud(null);
             }}
-            disabled={isPending}
+            disabled={isPending || esEstructuralBloqueado}
             min={1}
             max={65535}
             className="h-10 rounded-xl px-3 py-2 text-sm"
@@ -235,7 +242,7 @@ export function AtributoForm({
                 setPrecision(e.target.value);
                 if (errorPrecision) setErrorPrecision(null);
               }}
-              disabled={isPending}
+              disabled={isPending || esEstructuralBloqueado}
               min={1}
               max={100}
               className="h-10 rounded-xl px-3 py-2 text-sm"
@@ -260,7 +267,7 @@ export function AtributoForm({
                 setEscala(e.target.value);
                 if (errorEscala) setErrorEscala(null);
               }}
-              disabled={isPending}
+              disabled={isPending || esEstructuralBloqueado}
               min={0}
               max={100}
               className="h-10 rounded-xl px-3 py-2 text-sm"
@@ -275,45 +282,59 @@ export function AtributoForm({
 
       {/* Restricciones / Flags */}
       <div className="space-y-2.5 rounded-xl border border-slate-100 bg-slate-50/50 p-3">
-        <label className="flex items-center space-x-2.5 cursor-pointer">
+        <label className="flex items-center space-x-2.5 cursor-not-allowed opacity-75">
           <input
             type="checkbox"
             id="chk-pk"
             checked={esLlavePrimaria}
             onChange={(e) => handlePkChange(e.target.checked)}
-            disabled={isPending}
+            disabled={true}
             className="size-4 rounded border-slate-300 text-[#003c70] focus:ring-[#91bcfb]"
           />
           <span className="text-xs font-medium text-slate-800">
-            Llave primaria (Primary Key)
+            Llave Primaria (PK)
           </span>
         </label>
 
-        <label className="flex items-center space-x-2.5 cursor-pointer">
+        <label
+          className={cn(
+            "flex items-center space-x-2.5",
+            esLlavePrimaria || esEstructuralBloqueado
+              ? "cursor-not-allowed opacity-50"
+              : "cursor-pointer"
+          )}
+        >
           <input
             type="checkbox"
             id="chk-null"
             checked={permiteNulo}
             onChange={(e) => setPermiteNulo(e.target.checked)}
-            disabled={isPending || esLlavePrimaria}
+            disabled={isPending || esLlavePrimaria || esEstructuralBloqueado}
             className="size-4 rounded border-slate-300 text-[#003c70] focus:ring-[#91bcfb] disabled:opacity-50"
           />
           <span className="text-xs font-medium text-slate-800">
-            Permite nulos (Nullable)
+            Permite nulos (NULL)
           </span>
         </label>
 
-        <label className="flex items-center space-x-2.5 cursor-pointer">
+        <label
+          className={cn(
+            "flex items-center space-x-2.5",
+            esEstructuralBloqueado
+              ? "cursor-not-allowed opacity-50"
+              : "cursor-pointer"
+          )}
+        >
           <input
             type="checkbox"
             id="chk-unique"
             checked={esUnico}
             onChange={(e) => setEsUnico(e.target.checked)}
-            disabled={isPending}
+            disabled={isPending || esEstructuralBloqueado}
             className="size-4 rounded border-slate-300 text-[#003c70] focus:ring-[#91bcfb]"
           />
           <span className="text-xs font-medium text-slate-800">
-            Restricción única (UNIQUE explícito)
+            Restricción única (UNIQUE)
           </span>
         </label>
       </div>
@@ -323,12 +344,12 @@ export function AtributoForm({
         <TextFormField
           id="default-atributo"
           name="valorPorDefecto"
-          label="Valor por defecto (Opcional)"
-          placeholder="Ej. 'activo', 0"
+          label="Valor por defecto"
+          placeholder="Ej. 'PENDIENTE', 0, true"
           type="text"
           value={valorPorDefecto}
           onChange={(e) => setValorPorDefecto(e.target.value)}
-          disabled={isPending}
+          disabled={isPending || esEstructuralBloqueado}
           maxLength={100}
         />
       </div>

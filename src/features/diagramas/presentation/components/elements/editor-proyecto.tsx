@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ReactFlowProvider, type Viewport } from "@xyflow/react";
+import { ReactFlowProvider, type Connection, type Viewport } from "@xyflow/react";
 
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
 import { crearProyectoAction } from "@/features/gestion-proyectos/presentation/actions/proyecto.action";
@@ -14,26 +14,20 @@ import type {
 import type {
   Clase,
 } from "../../../domain/entities/clase.entity";
-import type {
-  Diagrama,
-  DiagramaDetalle,
-} from "../../../domain/entities/diagrama.entity";
+import type { Diagrama } from "../../../domain/entities/diagrama.entity";
+import {
+  requiereMaterializacion,
+  type ConectorRelacion,
+  type MaterializacionFkData,
+  type Relacion,
+  type TipoRelacion,
+} from "../../../domain/entities/relacion.entity";
 import {
   actualizarDiagramaAction,
   crearDiagramaAction,
   eliminarDiagramaAction,
-  obtenerDiagramaAction,
 } from "../../actions/diagrama.action";
-import {
-  actualizarClaseAction,
-  crearClaseAction,
-  eliminarClaseAction,
-} from "../../actions/clase.action";
-import {
-  actualizarAtributoAction,
-  crearAtributoAction,
-  eliminarAtributoAction,
-} from "../../actions/atributo.action";
+import { useHidratacionEditor } from "../../hooks/use-hidratacion-editor";
 import { DiagramaQueryParamSchema } from "../../../infrastructure/schemas/diagrama.schemas";
 import { useDiagramaActivoUrl } from "../../hooks/use-diagrama-activo-url";
 import { useViewportPorDiagrama } from "../../hooks/use-viewport-por-diagrama";
@@ -52,11 +46,97 @@ import { ModalEliminarPagina } from "./modal-eliminar-pagina";
 import { ModalRenombrarPagina } from "./modal-renombrar-pagina";
 import { ModalEliminarClase } from "./modal-eliminar-clase";
 import { ModalEliminarAtributo } from "./modal-eliminar-atributo";
+import { ModalEliminarRelacion } from "./modal-eliminar-relacion";
+import { PanelRelaciones } from "./panel-relaciones";
+import { PropuestaReferenciaFkModal } from "./propuesta-referencia-fk-modal";
+import { PropuestaEstructuraNmForm } from "../forms/propuesta-estructura-nm-form";
 import { ModalCompartirProyecto } from "@/features/gestion-colaboradores/presentation/components/elements/modal-compartir-proyecto";
+import { authClient } from "@/lib/auth-client";
+import { useEditorDiagramaStore } from "../../stores/editor-diagrama.store";
+import { crearScopeEditor, type OperacionEditor } from "../../../domain/entities/operacion-editor.entity";
+import { useProcesadorColaEditor } from "../../hooks/use-procesador-cola-editor";
+import { colaEditorRepository, useEncolarOperacionEditor } from "../../hooks/use-encolar-operacion-editor";
+import { despacharOperacionEditor } from "../../services/ejecutor-operacion-editor";
+import { useColaboracionTiempoReal } from "../../hooks/use-colaboracion-tiempo-real";
+import { useBloqueoClase } from "../../hooks/use-bloqueo-clase";
+import { useColaboracionStore } from "../../stores/colaboracion.store";
+import { colaboracionSocketService } from "../../../infrastructure/websocket/colaboracion-socket.service";
 
 export interface EditorProyectoProps {
   proyecto: Proyecto;
   diagramasIniciales: Diagrama[];
+}
+
+interface RelacionNmPendiente {
+  origen: Clase;
+  destino: Clase;
+  atributoOrigenId: string;
+  atributoDestinoId: string;
+  posicionX: number;
+  posicionY: number;
+}
+
+const ANCHO_CLASE_INTERMEDIA_NM = 280;
+const ALTO_ESTIMADO_CLASE_INTERMEDIA_NM = 140;
+const SEPARACION_CLASE_INTERMEDIA_NM = 120;
+const LIMITE_VERTICAL_SUPERIOR_LIENZO = -6000;
+const LIMITE_VERTICAL_INFERIOR_LIENZO = 6000;
+
+function calcularPosicionIntermediaNm(
+  origen: Clase,
+  destino: Clase
+): { posicionX: number; posicionY: number } {
+  const origX = Number.isFinite(origen.posicionX) ? origen.posicionX : 0;
+  const origY = Number.isFinite(origen.posicionY) ? origen.posicionY : 0;
+  const origAncho = Number.isFinite(origen.ancho) ? origen.ancho : 280;
+  const destX = Number.isFinite(destino.posicionX) ? destino.posicionX : 0;
+  const destY = Number.isFinite(destino.posicionY) ? destino.posicionY : 0;
+  const destAncho = Number.isFinite(destino.ancho) ? destino.ancho : 280;
+
+  // Las posiciones son la esquina superior izquierda. La clase intermedia se
+  // sitúa sobre el punto medio de A/B para que la proyección N:M quede como
+  // una línea principal con un único ramal ortogonal, no dos asociaciones.
+  const centroOrigenX = origX + origAncho / 2;
+  const centroDestinoX = destX + destAncho / 2;
+  const centroOrigenY = origY + ALTO_ESTIMADO_CLASE_INTERMEDIA_NM / 2;
+  const centroDestinoY = destY + ALTO_ESTIMADO_CLASE_INTERMEDIA_NM / 2;
+
+  const centroY = (centroOrigenY + centroDestinoY) / 2;
+  const posicionSuperior =
+    centroY - ALTO_ESTIMADO_CLASE_INTERMEDIA_NM - SEPARACION_CLASE_INTERMEDIA_NM;
+  const posicionInferior = centroY + SEPARACION_CLASE_INTERMEDIA_NM;
+  const posicionY =
+    posicionSuperior >= LIMITE_VERTICAL_SUPERIOR_LIENZO
+      ? posicionSuperior
+      : Math.min(
+          posicionInferior,
+          LIMITE_VERTICAL_INFERIOR_LIENZO - ALTO_ESTIMADO_CLASE_INTERMEDIA_NM
+        );
+
+  return {
+    posicionX: Math.round(
+      (centroOrigenX + centroDestinoX) / 2 - ANCHO_CLASE_INTERMEDIA_NM / 2
+    ),
+    posicionY: Math.round(posicionY),
+  };
+}
+
+function resolverConectoresHacia(
+  origen: Pick<Clase, "posicionX" | "posicionY">,
+  destino: Pick<Clase, "posicionX" | "posicionY">
+): { conectorOrigen: ConectorRelacion; conectorDestino: ConectorRelacion } {
+  const deltaX = destino.posicionX - origen.posicionX;
+  const deltaY = destino.posicionY - origen.posicionY;
+
+  if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+    return deltaX >= 0
+      ? { conectorOrigen: "right", conectorDestino: "left" }
+      : { conectorOrigen: "left", conectorDestino: "right" };
+  }
+
+  return deltaY >= 0
+    ? { conectorOrigen: "bottom", conectorDestino: "top" }
+    : { conectorOrigen: "top", conectorDestino: "bottom" };
 }
 
 export function EditorProyecto({
@@ -64,6 +144,7 @@ export function EditorProyecto({
   diagramasIniciales,
 }: EditorProyectoProps) {
   const router = useRouter();
+  const { data: session } = authClient.useSession();
   const { puedeEditar, esPropietario } = usePermisoEdicionDiagrama(proyecto);
 
   // Lista de páginas en estado local
@@ -88,19 +169,59 @@ export function EditorProyecto({
     return solicitado?.id ?? ordenados[0]?.id ?? null;
   }, [diagramas, idDiagramaSolicitado]);
 
-  const [detalleActivo, setDetalleActivo] = useState<DiagramaDetalle | null>(
-    null
-  );
-  // Estado local de trabajo para clases y atributos de la página activa
-  const [clasesLocales, setClasesLocales] = useState<Clase[]>([]);
+  // El dominio del editor vive exclusivamente en Zustand. Los nombres de
+  // adaptador conservan la API de los flujos visuales existentes de 014.
+  const detalleActivo = useEditorDiagramaStore((estado) => estado.detalleConfirmado);
+  const clasesLocales = useEditorDiagramaStore((estado) => estado.clases);
+  const relacionesLocales = useEditorDiagramaStore((estado) => estado.relaciones);
+  const revisionCola = useEditorDiagramaStore((estado) => estado.revisionCola);
+  const claseSeleccionadaId = useEditorDiagramaStore((estado) => estado.claseSeleccionadaId);
+  const relacionSeleccionadaId = useEditorDiagramaStore((estado) => estado.relacionSeleccionadaId);
+  const fijarClaseSeleccionada = useEditorDiagramaStore((estado) => estado.fijarClaseSeleccionada);
+  const fijarRelacionSeleccionada = useEditorDiagramaStore((estado) => estado.fijarRelacionSeleccionada);
+  const setClaseSeleccionadaId = fijarClaseSeleccionada;
+  const setRelacionSeleccionadaId = fijarRelacionSeleccionada;
   const clasesLocalesRef = useRef<Clase[]>(clasesLocales);
+  const relacionesLocalesRef = useRef<Relacion[]>(relacionesLocales);
   useEffect(() => {
     clasesLocalesRef.current = clasesLocales;
-  }, [clasesLocales]);
-
-  const [claseSeleccionadaId, setClaseSeleccionadaId] = useState<string | null>(
+    relacionesLocalesRef.current = relacionesLocales;
+  }, [clasesLocales, relacionesLocales]);
+  const scopeEditor =
+    diagramaActivoId && session?.user?.id
+      ? crearScopeEditor(session.user.id, diagramaActivoId)
+      : null;
+  const encolarOperacion = useEncolarOperacionEditor(scopeEditor);
+  const handleOperacionRechazada = useCallback((_operacion: OperacionEditor, mensaje: string) => {
+    appToast.error("No se pudo sincronizar un cambio", mensaje);
+  }, []);
+  useProcesadorColaEditor({
+    scopeKey: scopeEditor,
+    repository: colaEditorRepository,
+    despachar: despacharOperacionEditor,
+    obtenerDetalleConfirmado: () => useEditorDiagramaStore.getState().detalleConfirmado,
+    alRechazar: handleOperacionRechazada,
+    revision: revisionCola,
+  });
+  useColaboracionTiempoReal({
+    diagramaId: diagramaActivoId,
+    habilitado: Boolean(diagramaActivoId),
+  });
+  const [panelPropiedadesAbierto, setPanelPropiedadesAbierto] = useState(false);
+  useBloqueoClase(panelPropiedadesAbierto ? claseSeleccionadaId : null);
+  const [tipoRelacionPendiente, setTipoRelacionPendiente] = useState<
+    TipoRelacion | undefined
+  >();
+  const [cardinalidadesPendientes, setCardinalidadesPendientes] = useState<
+    [string, string]
+  >(["1", "1"]);
+  const [conexionPendiente, setConexionPendiente] = useState(false);
+  const [relacionPendienteFk, setRelacionPendienteFk] =
+    useState<Relacion | null>(null);
+  const [relacionAEliminar, setRelacionAEliminar] = useState<Relacion | null>(
     null
   );
+  const [relacionNmPendiente, setRelacionNmPendiente] = useState<RelacionNmPendiente | null>(null);
 
   // Estado del Panel Lateral Contextual de Propiedades
   const [modoPanel, setModoPanel] = useState<ModoPanelPropiedades>("clase");
@@ -126,7 +247,7 @@ export function EditorProyecto({
   const [atributoAEliminar, setAtributoAEliminar] = useState<Atributo | null>(
     null
   );
-  const [isPendingOperacion, setIsPendingOperacion] = useState(false);
+  const [isPendingOperacion] = useState(false);
 
   // Estado de herramienta de navegación activa
   const [herramientaActiva, setHerramientaActiva] =
@@ -169,6 +290,15 @@ export function EditorProyecto({
   // Manejo de Delete / Supr centralizado
   const handleEliminarSeleccion = useCallback(() => {
     if (!puedeEditar) return;
+    if (relacionSeleccionadaId) {
+      const rel = relacionesLocalesRef.current.find(
+        (r) => r.id === relacionSeleccionadaId
+      );
+      if (rel) {
+        setRelacionAEliminar(rel);
+        return;
+      }
+    }
     if (
       modoPanel === "editar-atributo" &&
       atributoSeleccionadoId &&
@@ -186,6 +316,12 @@ export function EditorProyecto({
       }
     }
     if (claseSeleccionadaId) {
+      const lock = useColaboracionStore.getState().bloqueosClases[claseSeleccionadaId];
+      const miId = useColaboracionStore.getState().miUsuarioId;
+      if (lock && miId && lock.idUsuario !== miId) {
+        appToast.error("Clase bloqueada", `Esta clase está siendo editada por ${lock.nombreUsuario}`);
+        return;
+      }
       const seleccionada = clasesLocalesRef.current.find(
         (c) => c.id === claseSeleccionadaId
       );
@@ -193,113 +329,54 @@ export function EditorProyecto({
         setClaseAEliminar(seleccionada);
       }
     }
-  }, [puedeEditar, modoPanel, atributoSeleccionadoId, claseSeleccionadaId]);
+  }, [
+    puedeEditar,
+    relacionSeleccionadaId,
+    modoPanel,
+    atributoSeleccionadoId,
+    claseSeleccionadaId,
+  ]);
 
   // Copia de Atributo (Ctrl+D o botón de fila)
   const handleCopiarAtributo = useCallback(
     async (atributo: Atributo) => {
-      if (!puedeEditar || isPendingOperacion) return;
+      if (!puedeEditar || isPendingOperacion || !diagramaActivoId) return;
 
-      setIsPendingOperacion(true);
+      if (atributo.esLlavePrimaria) {
+        appToast.error("Acción no permitida", "No se puede duplicar la clave primaria de una clase.");
+        return;
+      }
+
       const nuevoAttrId = crypto.randomUUID();
       const claseTarget = clasesLocalesRef.current.find(
         (c) => c.id === atributo.idClase
       );
       const nuevoOrden = (claseTarget?.atributos?.length || 0) + 1;
 
-      // Inserción optimista inmediata
-      const nuevoAtributoOptimista: Atributo = {
-        id: nuevoAttrId,
-        idClase: atributo.idClase,
-        nombre: `${atributo.nombre}_copia`,
-        tipoDato: atributo.tipoDato,
-        longitud: atributo.longitud,
-        precision: atributo.precision,
-        escala: atributo.escala,
-        esLlavePrimaria: false,
-        permiteNulo: atributo.permiteNulo,
-        esUnico: false,
-        valorPorDefecto: atributo.valorPorDefecto,
-        ordenDePosicion: nuevoOrden,
-      };
-
-      setClasesLocales((actuales) =>
-        actuales.map((c) =>
-          c.id === atributo.idClase
-            ? {
-                ...c,
-                atributos: [...c.atributos, nuevoAtributoOptimista],
-              }
-            : c
-        )
-      );
-
       try {
-        const copyPayload: CrearAtributoData = {
-          idAtributo: nuevoAttrId,
-          nombre: `${atributo.nombre}_copia`,
-          tipoDato: atributo.tipoDato,
-          longitud: atributo.longitud,
-          precision: atributo.precision,
-          escala: atributo.escala,
-          esLlavePrimaria: false,
-          permiteNulo: atributo.permiteNulo,
-          esUnico: false,
-          valorPorDefecto: atributo.valorPorDefecto,
-        };
-
-        const res = await crearAtributoAction(atributo.idClase, copyPayload);
-
-        if (!res.ok) {
-          // Revertir ante error
-          setClasesLocales((actuales) =>
-            actuales.map((c) =>
-              c.id === atributo.idClase
-                ? {
-                    ...c,
-                    atributos: c.atributos.filter((a) => a.id !== nuevoAttrId),
-                  }
-                : c
-            )
-          );
-          appToast.error(
-            "Error al copiar",
-            res.errors[0] || "No se pudo copiar el atributo."
-          );
-          return;
-        }
-
-        // Reconciliación con respuesta confirmada
-        setClasesLocales((actuales) =>
-          actuales.map((c) =>
-            c.id === atributo.idClase
-              ? {
-                  ...c,
-                  atributos: c.atributos
-                    .map((a) => (a.id === nuevoAttrId ? res.data : a))
-                    .sort((a, b) => a.ordenDePosicion - b.ordenDePosicion),
-                }
-              : c
-          )
+        await encolarOperacion(
+          "CREAR_ATRIBUTO",
+          {
+            idClase: atributo.idClase,
+            idAtributo: nuevoAttrId,
+            nombre: `${atributo.nombre}_copia`,
+            tipoDato: atributo.tipoDato,
+            longitud: atributo.longitud,
+            precision: atributo.precision,
+            escala: atributo.escala,
+            permiteNulo: atributo.permiteNulo,
+            esLlavePrimaria: false,
+            esUnico: false,
+            valorPorDefecto: atributo.valorPorDefecto,
+            ordenDePosicion: nuevoOrden,
+          },
+          { actionId: crypto.randomUUID() }
         );
-        appToast.success("Atributo duplicado correctamente.");
       } catch {
-        setClasesLocales((actuales) =>
-          actuales.map((c) =>
-            c.id === atributo.idClase
-              ? {
-                  ...c,
-                  atributos: c.atributos.filter((a) => a.id !== nuevoAttrId),
-                }
-              : c
-          )
-        );
-        appToast.error("Error", "Error inesperado al copiar el atributo.");
-      } finally {
-        setIsPendingOperacion(false);
+        appToast.error("Error", "No se pudo registrar la copia del atributo.");
       }
     },
-    [puedeEditar, isPendingOperacion]
+    [puedeEditar, isPendingOperacion, diagramaActivoId, encolarOperacion]
   );
 
   // Atajo Ctrl+D para duplicar el atributo activo
@@ -324,12 +401,15 @@ export function EditorProyecto({
     onGuardarCambios: handleGuardarCambios,
     onDuplicarSeleccion: handleDuplicarSeleccion,
     onEliminarSeleccion: handleEliminarSeleccion,
+    onCancelarInteraccion: () => setHerramientaActiva("seleccion"),
     deshabilitado: Boolean(
       diagramaARenombrar ||
         diagramaAEliminar ||
         modalCompartirAbierto ||
         claseAEliminar ||
-        atributoAEliminar
+        atributoAEliminar ||
+        relacionAEliminar ||
+        relacionPendienteFk
     ),
   });
 
@@ -343,14 +423,32 @@ export function EditorProyecto({
     [diagramaActivoId, guardarViewport]
   );
 
-  // Contador para ignorar respuestas de solicitudes anteriores si el usuario cambia rápido de página
-  const peticionActivaRef = useRef<number>(0);
+  const { cargando: cargandoHidratacion } = useHidratacionEditor({
+    usuarioId: session?.user?.id ?? null,
+    proyectoId: proyecto.id,
+    diagramaId: diagramaActivoId,
+    alFallar: (msg) => {
+      if (diagramaActivoId) {
+        setIdDiagramaConError(diagramaActivoId);
+      }
+      appToast.error("Error", msg);
+    },
+  });
+
+  // Limpiar paneles y selección cuando cambia de diagrama activo
+  useEffect(() => {
+    // El cambio de página requiere descartar el formulario visible del diagrama anterior.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAtributoSeleccionadoId(null);
+    setPanelPropiedadesAbierto(false);
+    setIdDiagramaConError(null);
+  }, [diagramaActivoId]);
 
   const detalleVisible =
     detalleActivo?.id === diagramaActivoId ? detalleActivo : null;
   const cargandoDetalle =
     diagramaActivoId !== null &&
-    detalleVisible === null &&
+    (detalleVisible === null || cargandoHidratacion) &&
     idDiagramaConError !== diagramaActivoId;
 
   // Una URL ausente, inválida o no disponible se corrige sin añadir historial.
@@ -363,46 +461,6 @@ export function EditorProyecto({
     }
   }, [diagramaActivoId, idDiagramaSolicitado, replaceDiagrama]);
 
-  // Cargar el detalle del diagrama activo
-  useEffect(() => {
-    if (!diagramaActivoId) return;
-
-    let cancelado = false;
-    const peticionActual = ++peticionActivaRef.current;
-
-    obtenerDiagramaAction(proyecto.id, diagramaActivoId)
-      .then((res) => {
-        if (cancelado || peticionActual !== peticionActivaRef.current) {
-          return;
-        }
-
-        if (res.ok) {
-          if (res.data.id === diagramaActivoId) {
-            setDetalleActivo(res.data);
-            setClasesLocales(res.data.clases || []);
-            setIdDiagramaConError(null);
-          }
-        } else {
-          setIdDiagramaConError(diagramaActivoId);
-          appToast.error(
-            "Error",
-            res.errors[0] || "No se pudo cargar el detalle de la página."
-          );
-        }
-      })
-      .catch(() => {
-        if (cancelado || peticionActual !== peticionActivaRef.current) {
-          return;
-        }
-        setIdDiagramaConError(diagramaActivoId);
-        appToast.error("Error", "Error de conexión al cargar la página.");
-      });
-
-    return () => {
-      cancelado = true;
-    };
-  }, [proyecto.id, diagramaActivoId]);
-
   const handleSeleccionarDiagrama = (idDiagrama: string) => {
     if (idDiagrama === diagramaActivoId) return;
     setClaseSeleccionadaId(null);
@@ -410,6 +468,10 @@ export function EditorProyecto({
     setModoPanel("clase");
     setClaseAEliminar(null);
     setAtributoAEliminar(null);
+    setRelacionSeleccionadaId(null);
+    setRelacionPendienteFk(null);
+    setRelacionAEliminar(null);
+    setPanelPropiedadesAbierto(false);
     pushDiagrama(idDiagrama);
   };
 
@@ -556,9 +618,51 @@ export function EditorProyecto({
 
   const handleSeleccionarClase = useCallback((idClase: string | null) => {
     setClaseSeleccionadaId(idClase);
+    if (idClase) {
+      setRelacionSeleccionadaId(null);
+    }
+  }, [setClaseSeleccionadaId, setRelacionSeleccionadaId]);
+
+  const handleSeleccionarRelacion = useCallback((idRelacion: string | null) => {
+    setRelacionSeleccionadaId(idRelacion);
+    if (idRelacion) {
+      setClaseSeleccionadaId(null);
+      setAtributoSeleccionadoId(null);
+      setPanelPropiedadesAbierto(false);
+    }
+  }, [setAtributoSeleccionadoId, setClaseSeleccionadaId, setPanelPropiedadesAbierto, setRelacionSeleccionadaId]);
+
+  const handleAbrirPropiedadesClase = useCallback((idClase: string) => {
+    const lock = useColaboracionStore.getState().bloqueosClases[idClase];
+    const miId = useColaboracionStore.getState().miUsuarioId;
+    if (lock && miId && lock.idUsuario !== miId) {
+      appToast.error("Clase bloqueada", `Esta clase está siendo editada por ${lock.nombreUsuario}`);
+      return;
+    }
+    colaboracionSocketService.solicitarBloqueoClase(idClase);
+
+    setClaseSeleccionadaId(idClase);
     setModoPanel("clase");
     setAtributoSeleccionadoId(null);
-  }, []);
+    setRelacionSeleccionadaId(null);
+    setPanelPropiedadesAbierto(true);
+  }, [setAtributoSeleccionadoId, setClaseSeleccionadaId, setModoPanel, setPanelPropiedadesAbierto, setRelacionSeleccionadaId]);
+
+  const handleAbrirPropiedadesAtributo = useCallback((atributo: Atributo) => {
+    const lock = useColaboracionStore.getState().bloqueosClases[atributo.idClase];
+    const miId = useColaboracionStore.getState().miUsuarioId;
+    if (lock && miId && lock.idUsuario !== miId) {
+      appToast.error("Clase bloqueada", `La clase contenedora está siendo editada por ${lock.nombreUsuario}`);
+      return;
+    }
+    colaboracionSocketService.solicitarBloqueoClase(atributo.idClase);
+
+    setClaseSeleccionadaId(atributo.idClase);
+    setAtributoSeleccionadoId(atributo.id);
+    setModoPanel("editar-atributo");
+    setRelacionSeleccionadaId(null);
+    setPanelPropiedadesAbierto(true);
+  }, [setAtributoSeleccionadoId, setClaseSeleccionadaId, setModoPanel, setPanelPropiedadesAbierto, setRelacionSeleccionadaId]);
 
   const handleCambiarModoPanel = useCallback(
     (nuevoModo: ModoPanelPropiedades, attr?: Atributo | null) => {
@@ -573,10 +677,16 @@ export function EditorProyecto({
   );
 
   const handleCerrarPanel = useCallback(() => {
+    const idActual = useEditorDiagramaStore.getState().claseSeleccionadaId;
+    if (idActual) {
+      colaboracionSocketService.liberarBloqueoClase(idActual);
+    }
     setClaseSeleccionadaId(null);
     setAtributoSeleccionadoId(null);
+    setRelacionSeleccionadaId(null);
     setModoPanel("clase");
-  }, []);
+    setPanelPropiedadesAbierto(false);
+  }, [setAtributoSeleccionadoId, setClaseSeleccionadaId, setModoPanel, setPanelPropiedadesAbierto, setRelacionSeleccionadaId]);
 
   // ── Gestión de Clases UML (US2 & US3) ───────────────────────────────────────
 
@@ -585,222 +695,121 @@ export function EditorProyecto({
     async (x: number, y: number) => {
       if (!puedeEditar || !diagramaActivoId) return;
 
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        console.warn(`[handleCrearClaseEnPosicion] Coordenadas inválidas ignoradas: x=${x}, y=${y}`);
+        return;
+      }
+
       const classId = crypto.randomUUID();
       const atributoInicialId = crypto.randomUUID();
 
-      // Creación optimista inmediata en el estado de trabajo (ancho compacto 220px)
-      const nuevaClaseOptimista: Clase = {
-        id: classId,
-        idDiagrama: diagramaActivoId,
-        nombre: "Tabla",
-        posicionX: x,
-        posicionY: y,
-        ancho: 220,
-        atributos: [
-          {
-            id: atributoInicialId,
-            idClase: classId,
-            tipoDato: "integer",
-            nombre: "id",
-            longitud: null,
-            precision: null,
-            escala: null,
-            esLlavePrimaria: true,
-            permiteNulo: false,
-            esUnico: false,
-            valorPorDefecto: null,
-            ordenDePosicion: 1,
-          },
-        ],
-      };
-
-      setClasesLocales((actuales) => [...actuales, nuevaClaseOptimista]);
       setClaseSeleccionadaId(classId);
       setModoPanel("clase");
       setAtributoSeleccionadoId(null);
       setHerramientaActiva("seleccion");
+      setPanelPropiedadesAbierto(true);
 
       try {
-        const res = await crearClaseAction(diagramaActivoId, {
-          idClase: classId,
-          idAtributoInicial: atributoInicialId,
-          nombre: "Tabla",
-          posicionX: x,
-          posicionY: y,
-          ancho: 220,
-        });
-
-        if (res.ok) {
-          // Reconciliación con la respuesta confirmada
-          setClasesLocales((actuales) =>
-            actuales.map((c) => (c.id === classId ? res.data : c))
-          );
-        } else {
-          // Revertir ante error
-          setClasesLocales((actuales) =>
-            actuales.filter((c) => c.id !== classId)
-          );
-          appToast.error(
-            "Error al crear clase",
-            res.errors[0] || "No se pudo crear la clase."
-          );
-        }
-      } catch {
-        setClasesLocales((actuales) =>
-          actuales.filter((c) => c.id !== classId)
+        await encolarOperacion(
+          "CREAR_CLASE",
+          {
+            idClase: classId,
+            idAtributoInicial: atributoInicialId,
+            nombre: "Tabla",
+            posicionX: x,
+            posicionY: y,
+            ancho: 220,
+          },
+          { actionId: crypto.randomUUID() }
         );
-        appToast.error("Error", "Error inesperado al crear la clase UML.");
+      } catch {
+        appToast.error("Error", "No se pudo registrar la creación local de la clase.");
       }
     },
-    [puedeEditar, diagramaActivoId]
+    [puedeEditar, diagramaActivoId, encolarOperacion, setClaseSeleccionadaId, setAtributoSeleccionadoId, setModoPanel, setHerramientaActiva, setPanelPropiedadesAbierto]
   );
 
-  // Movimiento de Clase al soltar drag (onNodeDragStop): toma la posición final y ejecuta un único PATCH no bloqueante
+  // Movimiento de Clase al soltar drag (onNodeDragStop): toma la posición final y ejecuta un único evento
   const handleMoverClaseStop = useCallback(
     async (idClase: string, x: number, y: number) => {
       if (!puedeEditar || !diagramaActivoId) return;
 
-      const claseAnterior = clasesLocalesRef.current.find((c) => c.id === idClase);
-      if (!claseAnterior) return;
-
-      const xInicial = claseAnterior.posicionX;
-      const yInicial = claseAnterior.posicionY;
-
-      // Si la posición no cambió, no realizamos petición
-      if (xInicial === x && yInicial === y) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        console.warn(`[handleMoverClaseStop] Coordenadas no finitas ignoradas: idClase=${idClase}, x=${x}, y=${y}`);
         return;
       }
 
-      // Actualizar posición final en el estado local de trabajo
-      setClasesLocales((actuales) =>
-        actuales.map((c) =>
-          c.id === idClase ? { ...c, posicionX: x, posicionY: y } : c
-        )
-      );
+      const claseExiste = clasesLocalesRef.current.some((c) => c.id === idClase);
+      if (!claseExiste) return;
+
+      const posX = Math.round(x);
+      const posY = Math.round(y);
 
       try {
-        const res = await actualizarClaseAction(diagramaActivoId, idClase, {
-          posicionX: x,
-          posicionY: y,
+        await encolarOperacion("ACTUALIZAR_CLASE", {
+          idClase,
+          posicionX: posX,
+          posicionY: posY,
         });
-
-        if (!res.ok) {
-          // Revertir únicamente esta clase a su posición previa confirmada
-          setClasesLocales((actuales) =>
-            actuales.map((c) =>
-              c.id === idClase
-                ? {
-                    ...c,
-                    posicionX: xInicial,
-                    posicionY: yInicial,
-                  }
-                : c
-            )
-          );
-          appToast.error(
-            "Error al mover clase",
-            res.errors[0] || "No se pudo actualizar la posición."
-          );
-        }
       } catch {
-        setClasesLocales((actuales) =>
-          actuales.map((c) =>
-            c.id === idClase
-              ? {
-                  ...c,
-                  posicionX: xInicial,
-                  posicionY: yInicial,
-                }
-              : c
-          )
-        );
-        appToast.error("Error", "Error de conexión al mover la clase.");
+        appToast.error("Error", "No se pudo registrar el movimiento local.");
       }
     },
-    [puedeEditar, diagramaActivoId]
+    [puedeEditar, diagramaActivoId, encolarOperacion]
   );
 
-  // Redimensionamiento visual en el lienzo al soltar handle de resize
+  // Redimensionamiento visual en el lienzo al soltar handle de resize (ancho >= 180)
   const handleRedimensionarClaseStop = useCallback(
     async (idClase: string, nuevoAncho: number) => {
       if (!puedeEditar || !diagramaActivoId) return;
 
-      const claseAnterior = clasesLocalesRef.current.find((c) => c.id === idClase);
-      if (!claseAnterior || claseAnterior.ancho === nuevoAncho) return;
+      if (!Number.isFinite(nuevoAncho)) {
+        console.warn(`[handleRedimensionarClaseStop] Ancho no finito ignorado: idClase=${idClase}, ancho=${nuevoAncho}`);
+        return;
+      }
 
-      // Actualización local
-      setClasesLocales((actuales) =>
-        actuales.map((c) =>
-          c.id === idClase ? { ...c, ancho: nuevoAncho } : c
-        )
-      );
+      const anchoFinal = Math.max(180, Math.round(nuevoAncho));
+      const claseAnterior = clasesLocalesRef.current.find((c) => c.id === idClase);
+      if (!claseAnterior || claseAnterior.ancho === anchoFinal) return;
 
       try {
-        const res = await actualizarClaseAction(diagramaActivoId, idClase, {
-          ancho: nuevoAncho,
+        await encolarOperacion("ACTUALIZAR_CLASE", {
+          idClase,
+          ancho: anchoFinal,
         });
-
-        if (!res.ok) {
-          // Revertir a ancho anterior
-          setClasesLocales((actuales) =>
-            actuales.map((c) =>
-              c.id === idClase ? { ...c, ancho: claseAnterior.ancho } : c
-            )
-          );
-          appToast.error(
-            "Error al redimensionar",
-            res.errors[0] || "No se pudo actualizar el ancho."
-          );
-        }
       } catch {
-        setClasesLocales((actuales) =>
-          actuales.map((c) =>
-            c.id === idClase ? { ...c, ancho: claseAnterior.ancho } : c
-          )
-        );
-        appToast.error("Error", "Error de conexión al redimensionar clase.");
+        appToast.error("Error", "No se pudo registrar el cambio de ancho.");
       }
     },
-    [puedeEditar, diagramaActivoId]
+    [puedeEditar, diagramaActivoId, encolarOperacion]
   );
 
-  // Renombrado de Clase (desde panel o inline)
+  // Renombrado de Clase (desde panel o modal)
   const handleGuardarNombreClase = useCallback(
     async (nuevoNombre: string): Promise<string | null> => {
       if (!claseSeleccionadaId || !diagramaActivoId || isPendingOperacion) {
         return "No se pudo identificar la clase a renombrar.";
       }
 
-      setIsPendingOperacion(true);
+      const cleanNombre = nuevoNombre.trim();
+      const claseActual = clasesLocalesRef.current.find((c) => c.id === claseSeleccionadaId);
+      if (claseActual && claseActual.nombre === cleanNombre) {
+        return null;
+      }
+
       try {
-        const res = await actualizarClaseAction(
-          diagramaActivoId,
-          claseSeleccionadaId,
-          { nombre: nuevoNombre }
-        );
-
-        if (!res.ok) {
-          const msg = res.errors[0] || "No se pudo actualizar el nombre.";
-          appToast.error("Error", msg);
-          return msg;
-        }
-
-        setClasesLocales((actuales) =>
-          actuales.map((c) =>
-            c.id === claseSeleccionadaId ? { ...c, nombre: res.data.nombre } : c
-          )
-        );
-        appToast.success("Clase renombrada correctamente.");
+        await encolarOperacion("ACTUALIZAR_CLASE", {
+          idClase: claseSeleccionadaId,
+          nombre: cleanNombre,
+        });
         return null;
       } catch {
-        const msg = "Error inesperado al renombrar la clase.";
+        const msg = "No se pudo registrar el cambio de nombre.";
         appToast.error("Error", msg);
         return msg;
-      } finally {
-        setIsPendingOperacion(false);
       }
     },
-    [claseSeleccionadaId, diagramaActivoId, isPendingOperacion]
+    [claseSeleccionadaId, diagramaActivoId, isPendingOperacion, encolarOperacion]
   );
 
   // Renombrado rápido inline desde doble clic en nodo
@@ -808,247 +817,557 @@ export function EditorProyecto({
     async (idClase: string, nuevoNombre: string) => {
       if (!puedeEditar || !diagramaActivoId) return;
 
-      setClasesLocales((actuales) =>
-        actuales.map((c) =>
-          c.id === idClase ? { ...c, nombre: nuevoNombre } : c
-        )
-      );
-
-      try {
-        const res = await actualizarClaseAction(diagramaActivoId, idClase, {
-          nombre: nuevoNombre,
-        });
-
-        if (!res.ok) {
-          appToast.error("Error", res.errors[0] || "No se pudo renombrar.");
-          // Re-cargar diagrama para consistencia
-          const diagRes = await obtenerDiagramaAction(
-            proyecto.id,
-            diagramaActivoId
-          );
-          if (diagRes.ok) {
-            setClasesLocales(diagRes.data.clases || []);
-          }
-        } else {
-          appToast.success("Clase renombrada.");
-        }
-      } catch {
-        appToast.error("Error", "Error de conexión al renombrar.");
-      }
-    },
-    [puedeEditar, diagramaActivoId, proyecto.id]
-  );
-
-  // Eliminación de Clase (Diálogo destructivo)
-  const handleConfirmarEliminacionClase = async () => {
-    if (!claseAEliminar || !diagramaActivoId || isPendingOperacion) return;
-
-    setIsPendingOperacion(true);
-    const idClaseBorrar = claseAEliminar.id;
-
-    try {
-      const res = await eliminarClaseAction(diagramaActivoId, idClaseBorrar);
-
-      if (!res.ok) {
-        appToast.error(
-          "Error al eliminar clase",
-          res.errors[0] || "No se pudo eliminar la clase."
-        );
-        setClaseAEliminar(null);
+      const cleanNombre = nuevoNombre.trim();
+      const claseActual = clasesLocalesRef.current.find((c) => c.id === idClase);
+      if (!claseActual || !cleanNombre || claseActual.nombre === cleanNombre) {
         return;
       }
 
-      setClasesLocales((actuales) =>
-        actuales.filter((c) => c.id !== idClaseBorrar)
-      );
+      try {
+        await encolarOperacion("ACTUALIZAR_CLASE", {
+          idClase,
+          nombre: cleanNombre,
+        });
+      } catch {
+        appToast.error("Error", "No se pudo registrar el cambio de nombre.");
+      }
+    },
+    [puedeEditar, diagramaActivoId, encolarOperacion]
+  );
+
+  // Eliminación de Clase (Diálogo destructivo unificado por Borrador / Delete / Panel)
+  const handleConfirmarEliminacionClase = async () => {
+    if (!claseAEliminar || !diagramaActivoId || isPendingOperacion) return;
+
+    const idClaseBorrar = claseAEliminar.id;
+    try {
+      await encolarOperacion("ELIMINAR_CLASE", {
+        idClase: idClaseBorrar,
+      });
+
       if (claseSeleccionadaId === idClaseBorrar) {
         setClaseSeleccionadaId(null);
         setAtributoSeleccionadoId(null);
         setModoPanel("clase");
+        setPanelPropiedadesAbierto(false);
       }
       setClaseAEliminar(null);
-      appToast.success("Clase eliminada correctamente.");
     } catch {
-      appToast.error("Error", "Error inesperado al eliminar la clase UML.");
+      appToast.error("Error", "No se pudo registrar la eliminación de la clase.");
       setClaseAEliminar(null);
-    } finally {
-      setIsPendingOperacion(false);
     }
   };
 
   // ── Gestión de Atributos (US4 & US5) ────────────────────────────────────────
 
-  const handleAbrirNuevoAtributo = useCallback((idClase: string) => {
-    setClaseSeleccionadaId(idClase);
-    setAtributoSeleccionadoId(null);
-    setModoPanel("crear-atributo");
-  }, []);
+  const handleAbrirNuevoAtributo = useCallback(
+    async (idClase: string) => {
+      if (!puedeEditar || !diagramaActivoId) return;
+
+      const clase = clasesLocalesRef.current.find((c) => c.id === idClase);
+      if (!clase) return;
+
+      const attrId = crypto.randomUUID();
+      const siguienteOrden = (clase.atributos?.length || 0) + 1;
+      const nombreAttr = `columna_${siguienteOrden}`;
+
+      try {
+        await encolarOperacion(
+          "CREAR_ATRIBUTO",
+          {
+            idClase,
+            idAtributo: attrId,
+            nombre: nombreAttr,
+            tipoDato: "integer",
+            permiteNulo: true,
+            esLlavePrimaria: false,
+            ordenDePosicion: siguienteOrden,
+          },
+          { actionId: crypto.randomUUID() }
+        );
+
+        setClaseSeleccionadaId(idClase);
+        setAtributoSeleccionadoId(attrId);
+        setModoPanel("editar-atributo");
+        setPanelPropiedadesAbierto(true);
+      } catch {
+        appToast.error("Error", "No se pudo crear el atributo.");
+      }
+    },
+    [puedeEditar, diagramaActivoId, encolarOperacion, setClaseSeleccionadaId]
+  );
 
   const handleSeleccionarAtributo = useCallback((atributo: Atributo) => {
     setClaseSeleccionadaId(atributo.idClase);
     setAtributoSeleccionadoId(atributo.id);
     setModoPanel("editar-atributo");
-  }, []);
+  }, [setAtributoSeleccionadoId, setClaseSeleccionadaId, setModoPanel]);
 
   const handleGuardarAtributo = useCallback(
     async (datos: CrearAtributoData): Promise<string | null> => {
       const clasePadre = clasesLocalesRef.current.find(
         (c) => c.id === claseSeleccionadaId
       );
-      if (!clasePadre || isPendingOperacion) {
+      if (!clasePadre || !diagramaActivoId || isPendingOperacion) {
         return "No se pudo identificar la clase del atributo.";
       }
 
-      setIsPendingOperacion(true);
       try {
         if (modoPanel === "editar-atributo" && atributoSeleccionadoId) {
-          // Edición de atributo existente
-          const res = await actualizarAtributoAction(
-            clasePadre.id,
-            atributoSeleccionadoId,
-            datos
+          const attrExistente = clasePadre.atributos.find(
+            (a) => a.id === atributoSeleccionadoId
           );
+          if (!attrExistente) return "Atributo no encontrado.";
 
-          if (!res.ok) {
-            const msg = res.errors[0] || "No se pudo actualizar el atributo.";
-            appToast.error("Error", msg);
-            return msg;
+          if (attrExistente.esLlavePrimaria) {
+            // PK: solo se puede modificar el nombre
+            await encolarOperacion("ACTUALIZAR_ATRIBUTO", {
+              idClase: clasePadre.id,
+              idAtributo: atributoSeleccionadoId,
+              nombre: datos.nombre,
+            });
+          } else if (attrExistente.procedencia === "sistema_fk") {
+            // FK: el formulario solo permite modificar su nombre.
+            await encolarOperacion("ACTUALIZAR_ATRIBUTO", {
+              idClase: clasePadre.id,
+              idAtributo: atributoSeleccionadoId,
+              nombre: datos.nombre,
+            });
+          } else {
+            // Atributo normal
+            await encolarOperacion("ACTUALIZAR_ATRIBUTO", {
+              idClase: clasePadre.id,
+              idAtributo: atributoSeleccionadoId,
+              nombre: datos.nombre,
+              tipoDato: datos.tipoDato,
+              longitud: datos.longitud ?? null,
+              precision: datos.precision ?? null,
+              escala: datos.escala ?? null,
+              permiteNulo: datos.permiteNulo ?? true,
+              esUnico: datos.esUnico ?? false,
+              valorPorDefecto: datos.valorPorDefecto ?? null,
+            });
           }
 
-          setClasesLocales((actuales) =>
-            actuales.map((c) =>
-              c.id === clasePadre.id
-                ? {
-                    ...c,
-                    atributos: c.atributos.map((a) =>
-                      a.id === atributoSeleccionadoId ? res.data : a
-                    ),
-                  }
-                : c
-            )
-          );
           setModoPanel("clase");
           setAtributoSeleccionadoId(null);
-          appToast.success("Atributo actualizado correctamente.");
           return null;
         } else {
-          // Creación de nuevo atributo
+          // Creación explícita
           const attrId = crypto.randomUUID();
-          const res = await crearAtributoAction(clasePadre.id, {
-            ...datos,
-            idAtributo: attrId,
-          });
+          const siguienteOrden = (clasePadre.atributos?.length || 0) + 1;
 
-          if (!res.ok) {
-            const msg = res.errors[0] || "No se pudo crear el atributo.";
-            appToast.error("Error", msg);
-            return msg;
-          }
-
-          setClasesLocales((actuales) =>
-            actuales.map((c) =>
-              c.id === clasePadre.id
-                ? {
-                    ...c,
-                    atributos: [...c.atributos, res.data].sort(
-                      (a, b) => a.ordenDePosicion - b.ordenDePosicion
-                    ),
-                  }
-                : c
-            )
+          await encolarOperacion(
+            "CREAR_ATRIBUTO",
+            {
+              idClase: clasePadre.id,
+              idAtributo: attrId,
+              nombre: datos.nombre,
+              tipoDato: datos.tipoDato,
+              longitud: datos.longitud ?? null,
+              precision: datos.precision ?? null,
+              escala: datos.escala ?? null,
+              permiteNulo: datos.permiteNulo ?? true,
+              esLlavePrimaria: false,
+              esUnico: datos.esUnico ?? false,
+              valorPorDefecto: datos.valorPorDefecto ?? null,
+              ordenDePosicion: datos.ordenDePosicion ?? siguienteOrden,
+            },
+          { actionId: crypto.randomUUID() }
           );
+
           setModoPanel("clase");
           setAtributoSeleccionadoId(null);
-          appToast.success("Atributo añadido correctamente.");
           return null;
         }
       } catch {
-        const msg = "Error inesperado al procesar el atributo.";
+        const msg = "No se pudo registrar el cambio del atributo.";
         appToast.error("Error", msg);
         return msg;
-      } finally {
-        setIsPendingOperacion(false);
       }
     },
-    [claseSeleccionadaId, modoPanel, atributoSeleccionadoId, isPendingOperacion]
+    [claseSeleccionadaId, diagramaActivoId, modoPanel, atributoSeleccionadoId, isPendingOperacion, encolarOperacion]
   );
 
   // Eliminación de Atributo (Diálogo destructivo)
   const handleConfirmarEliminacionAtributo = async () => {
-    if (!atributoAEliminar || isPendingOperacion) return;
+    if (!atributoAEliminar || isPendingOperacion || !diagramaActivoId) return;
 
-    setIsPendingOperacion(true);
-    const { idClase, id } = atributoAEliminar;
+    const { idClase, id, esLlavePrimaria, procedencia } = atributoAEliminar;
+
+    if (esLlavePrimaria) {
+      appToast.error("Acción no permitida", "No se puede eliminar la clave primaria.");
+      setAtributoAEliminar(null);
+      return;
+    }
+    if (procedencia === "sistema_fk") {
+      appToast.error("Acción no permitida", "No se puede eliminar la clave foránea.");
+      setAtributoAEliminar(null);
+      return;
+    }
 
     try {
-      const res = await eliminarAtributoAction(idClase, id);
+      await encolarOperacion("ELIMINAR_ATRIBUTO", {
+        idClase,
+        idAtributo: id,
+      });
 
-      if (!res.ok) {
-        appToast.error(
-          "Error al eliminar atributo",
-          res.errors[0] || "No se pudo eliminar el atributo."
-        );
-        setAtributoAEliminar(null);
-        return;
-      }
-
-      setClasesLocales((actuales) =>
-        actuales.map((c) =>
-          c.id === idClase
-            ? {
-                ...c,
-                atributos: c.atributos.filter((a) => a.id !== id),
-              }
-            : c
-        )
-      );
       if (atributoSeleccionadoId === id) {
         setAtributoSeleccionadoId(null);
         setModoPanel("clase");
       }
       setAtributoAEliminar(null);
-      appToast.success("Atributo eliminado correctamente.");
     } catch {
-      appToast.error("Error", "Error inesperado al eliminar el atributo.");
+      appToast.error("Error", "No se pudo registrar la eliminación del atributo.");
       setAtributoAEliminar(null);
-    } finally {
-      setIsPendingOperacion(false);
     }
   };
 
-  // Reordenar Atributo (T038, T039)
+  // Reordenar Atributo (T030)
   const handleReordenarAtributo = useCallback(
     async (idClase: string, idAtributo: string, nuevoOrden: number) => {
-      if (!puedeEditar) return;
+      if (!puedeEditar || !diagramaActivoId) return;
+
+      if (!Number.isFinite(nuevoOrden)) {
+        console.warn(`[handleReordenarAtributo] Orden no finito ignorado: nuevoOrden=${nuevoOrden}`);
+        return;
+      }
+
+      const clase = clasesLocalesRef.current.find((c) => c.id === idClase);
+      if (!clase) return;
+
+      const attr = clase.atributos.find((a) => a.id === idAtributo);
+      // La PK no se mueve (siempre fija en posición 1)
+      if (!attr || attr.esLlavePrimaria) return;
+
+      // El nuevo orden no puede sobreescribir la posición 1 reservada para la PK
+      const ordenFinal = Math.min(
+        clase.atributos.length,
+        Math.max(2, Math.trunc(nuevoOrden))
+      );
+      if (ordenFinal === attr.ordenDePosicion) return;
 
       try {
-        const res = await actualizarAtributoAction(idClase, idAtributo, {
-          ordenDePosicion: nuevoOrden,
+        await encolarOperacion("ACTUALIZAR_ATRIBUTO", {
+          idClase,
+          idAtributo,
+          ordenDePosicion: ordenFinal,
         });
-
-        if (!res.ok) {
-          appToast.error(
-            "Error al reordenar",
-            res.errors[0] || "No se pudo cambiar el orden del atributo."
-          );
-          return;
-        }
-
-        // Re-fetch diagrama activo para sincronizar todas las posiciones
-        if (diagramaActivoId) {
-          const diagRes = await obtenerDiagramaAction(
-            proyecto.id,
-            diagramaActivoId
-          );
-          if (diagRes.ok) {
-            setClasesLocales(diagRes.data.clases || []);
-          }
-        }
       } catch {
-        appToast.error("Error", "Error de conexión al reordenar atributo.");
+        appToast.error("Error", "No se pudo registrar el nuevo orden.");
       }
     },
-    [puedeEditar, diagramaActivoId, proyecto.id]
+    [puedeEditar, diagramaActivoId, encolarOperacion]
+  );
+
+  // ── Gestión de Relaciones UML y Referencias FK ──────────────────────────────
+
+  const handleConectarRelacion = useCallback(
+    async (conexion: Connection) => {
+      if (
+        !puedeEditar ||
+        !diagramaActivoId ||
+        !conexion.source ||
+        !conexion.target
+      ) {
+        return;
+      }
+
+      // Normalizar origen y destino: asegurar que el nodo donde inició el arrastre sea el origen
+      let idClaseOrigen = conexion.source;
+      let idClaseDestino = conexion.target;
+      let conectorOrigenRaw = conexion.sourceHandle;
+      let conectorDestinoRaw = conexion.targetHandle;
+
+      if (
+        conexion.sourceHandle?.includes("-target") &&
+        !conexion.targetHandle?.includes("-target")
+      ) {
+        idClaseOrigen = conexion.target;
+        idClaseDestino = conexion.source;
+        conectorOrigenRaw = conexion.targetHandle;
+        conectorDestinoRaw = conexion.sourceHandle;
+      }
+
+      const conectorOrigen =
+        (conectorOrigenRaw?.replace("-target", "") as ConectorRelacion) || "right";
+      const conectorDestino =
+        (conectorDestinoRaw?.replace("-target", "") as ConectorRelacion) ||
+        "left";
+
+      const tipo = tipoRelacionPendiente || "asociacion";
+      const [cardinalidadOrigen, cardinalidadDestino] = cardinalidadesPendientes;
+
+      const esMuchos = (valor: string) =>
+        valor.trim() === "*" || /\.\.\*$/.test(valor.trim()) || Number(valor) > 1;
+      if (esMuchos(cardinalidadOrigen) && esMuchos(cardinalidadDestino)) {
+        const origen = clasesLocalesRef.current.find((clase) => clase.id === idClaseOrigen);
+        const destino = clasesLocalesRef.current.find((clase) => clase.id === idClaseDestino);
+        const atributoOrigen = origen?.atributos.find((atributo) => atributo.esLlavePrimaria || atributo.esUnico);
+        const atributoDestino = destino?.atributos.find((atributo) => atributo.esLlavePrimaria || atributo.esUnico);
+        if (!origen || !destino || !atributoOrigen || !atributoDestino) {
+          appToast.error("No se puede crear la relación N:M", "Ambas clases deben tener un atributo PK o UNIQUE para crear la tabla intermedia.");
+          return;
+        }
+        const posicionIntermedia = calcularPosicionIntermediaNm(origen, destino);
+        setRelacionNmPendiente({
+          origen,
+          destino,
+          atributoOrigenId: atributoOrigen.id,
+          atributoDestinoId: atributoDestino.id,
+          posicionX: posicionIntermedia.posicionX,
+          posicionY: posicionIntermedia.posicionY,
+        });
+        return;
+      }
+
+      const idRelacionDefinitivo = crypto.randomUUID();
+
+      const nuevaRelacion: Relacion = {
+        id: idRelacionDefinitivo,
+        idDiagrama: diagramaActivoId,
+        idClaseOrigen,
+        idClaseDestino,
+        tipoRelacion: tipo,
+        cardinalidadOrigen,
+        cardinalidadDestino,
+        conectorOrigen,
+        conectorDestino,
+        referenciasFk: [],
+      };
+
+      const necesitaFk = requiereMaterializacion(
+        tipo,
+        cardinalidadOrigen,
+        cardinalidadDestino
+      );
+
+      if (necesitaFk) {
+        setRelacionPendienteFk(nuevaRelacion);
+      } else {
+        setRelacionSeleccionadaId(idRelacionDefinitivo);
+        setHerramientaActiva("seleccion");
+        setTipoRelacionPendiente(undefined);
+        setConexionPendiente(false);
+        setPanelPropiedadesAbierto(false);
+
+        try {
+          await encolarOperacion(
+            "CREAR_RELACION",
+            {
+              idRelacion: idRelacionDefinitivo,
+              idClaseOrigen,
+              idClaseDestino,
+              tipoRelacion: tipo,
+              cardinalidadOrigen,
+              cardinalidadDestino,
+              conectorOrigen,
+              conectorDestino,
+              nombre: tipo === "asociacion" ? "Asociación" : null,
+              materializacionFk: [],
+            },
+            { actionId: crypto.randomUUID() }
+          );
+        } catch {
+          appToast.error("Error", "No se pudo registrar la relación local.");
+        }
+      }
+    },
+    [
+      puedeEditar,
+      diagramaActivoId,
+      tipoRelacionPendiente,
+      cardinalidadesPendientes,
+      encolarOperacion,
+      setRelacionSeleccionadaId,
+    ]
+  );
+
+  const handleConfirmarEstructuraNm = useCallback(
+    async (nombreIntermedia: string) => {
+      if (!relacionNmPendiente || !diagramaActivoId) return;
+
+      const pendiente = relacionNmPendiente;
+      const atributoOrigen = pendiente.origen.atributos.find((atributo) => atributo.id === pendiente.atributoOrigenId);
+      const atributoDestino = pendiente.destino.atributos.find((atributo) => atributo.id === pendiente.atributoDestinoId);
+      if (!atributoOrigen || !atributoDestino) return;
+
+      const claseIntermedia = {
+        posicionX: pendiente.posicionX,
+        posicionY: pendiente.posicionY,
+      };
+      const conectoresOrigen = resolverConectoresHacia(
+        pendiente.origen,
+        claseIntermedia
+      );
+      const conectoresDestino = resolverConectoresHacia(
+        pendiente.destino,
+        claseIntermedia
+      );
+
+      const ids = {
+        estructura: crypto.randomUUID(),
+        clase: crypto.randomUUID(),
+        atributoInicial: crypto.randomUUID(),
+        atributoFkOrigen: crypto.randomUUID(),
+        atributoFkDestino: crypto.randomUUID(),
+        relacionOrigen: crypto.randomUUID(),
+        relacionDestino: crypto.randomUUID(),
+        referenciaOrigen: crypto.randomUUID(),
+        referenciaDestino: crypto.randomUUID(),
+      };
+      setRelacionNmPendiente(null);
+      setHerramientaActiva("seleccion");
+      setConexionPendiente(false);
+      setTipoRelacionPendiente(undefined);
+
+      try {
+        await encolarOperacion("CREAR_ESTRUCTURA_NM", {
+          idEstructuraNm: ids.estructura,
+          idClaseOrigen: pendiente.origen.id,
+          idClaseDestino: pendiente.destino.id,
+          claseIntermedia: {
+            idClase: ids.clase,
+            nombre: nombreIntermedia,
+            posicionX: pendiente.posicionX,
+            posicionY: pendiente.posicionY,
+            ancho: ANCHO_CLASE_INTERMEDIA_NM,
+            idAtributoPk: ids.atributoInicial,
+            nombreAtributoPk: "id",
+          },
+          relacionOrigen: {
+            idRelacion: ids.relacionOrigen,
+            cardinalidadOrigen: "1",
+            cardinalidadDestino: "0..*",
+            conectorOrigen: conectoresOrigen.conectorOrigen,
+            conectorDestino: conectoresOrigen.conectorDestino,
+            nombre: "Asociación",
+          },
+          relacionDestino: {
+            idRelacion: ids.relacionDestino,
+            cardinalidadOrigen: "1",
+            cardinalidadDestino: "0..*",
+            conectorOrigen: conectoresDestino.conectorOrigen,
+            conectorDestino: conectoresDestino.conectorDestino,
+            nombre: "Asociación",
+          },
+          referenciaFkOrigen: {
+            idReferenciaFk: ids.referenciaOrigen,
+            idAtributoFk: ids.atributoFkOrigen,
+            idAtributoReferenciado: atributoOrigen.id,
+            nombreAtributoFk: `${pendiente.origen.nombre.toLowerCase()}_id`,
+            onDelete: "NO_ACTION",
+            onUpdate: "NO_ACTION",
+          },
+          referenciaFkDestino: {
+            idReferenciaFk: ids.referenciaDestino,
+            idAtributoFk: ids.atributoFkDestino,
+            idAtributoReferenciado: atributoDestino.id,
+            nombreAtributoFk: `${pendiente.destino.nombre.toLowerCase()}_id`,
+            onDelete: "NO_ACTION",
+            onUpdate: "NO_ACTION",
+          },
+        }, { actionId: crypto.randomUUID(), grupoAtomico: ids.estructura });
+      } catch {
+        appToast.error("Error", "No se pudo registrar la estructura N:M local.");
+      }
+    },
+    [diagramaActivoId, encolarOperacion, relacionNmPendiente],
+  );
+
+  const handleConfirmarPropuestaFk = useCallback(
+    async (materializaciones: MaterializacionFkData[]) => {
+      if (!relacionPendienteFk || !diagramaActivoId) return;
+
+      const rel = relacionPendienteFk;
+      setRelacionPendienteFk(null);
+      setHerramientaActiva("seleccion");
+      setTipoRelacionPendiente(undefined);
+      setConexionPendiente(false);
+      setPanelPropiedadesAbierto(false);
+      setRelacionSeleccionadaId(rel.id);
+
+      try {
+        await encolarOperacion(
+          "CREAR_RELACION",
+          {
+            idRelacion: rel.id,
+            idClaseOrigen: rel.idClaseOrigen,
+            idClaseDestino: rel.idClaseDestino,
+            tipoRelacion: rel.tipoRelacion,
+            cardinalidadOrigen: rel.cardinalidadOrigen,
+            cardinalidadDestino: rel.cardinalidadDestino,
+            conectorOrigen: rel.conectorOrigen,
+            conectorDestino: rel.conectorDestino,
+            nombre: rel.tipoRelacion === "asociacion" ? (rel.nombre || "Asociación") : null,
+            materializacionFk: materializaciones,
+        },
+        { actionId: crypto.randomUUID(), grupoAtomico: rel.id }
+        );
+      } catch {
+        appToast.error("Error", "No se pudo registrar la relación con FK.");
+      }
+    },
+    [relacionPendienteFk, diagramaActivoId, encolarOperacion, setRelacionSeleccionadaId]
+  );
+
+  // Renombrado inline exclusivo para relación de tipo Asociación (T038)
+  const handleRenombrarRelacionInline = useCallback(
+    async (idRelacion: string, nuevoNombre: string) => {
+      if (!puedeEditar || !diagramaActivoId) return;
+
+      const cleanNombre = nuevoNombre.trim();
+      const relActual = relacionesLocalesRef.current.find((r) => r.id === idRelacion);
+      if (!relActual || !cleanNombre || relActual.nombre === cleanNombre) {
+        return;
+      }
+      if (relActual.tipoRelacion !== "asociacion") return;
+
+      try {
+        await encolarOperacion(
+          "RENOMBRAR_RELACION",
+          {
+            idRelacion,
+            nombre: cleanNombre,
+          },
+          { actionId: crypto.randomUUID() }
+        );
+      } catch {
+        appToast.error("Error", "No se pudo registrar el cambio de nombre de la relación.");
+      }
+    },
+    [puedeEditar, diagramaActivoId, encolarOperacion]
+  );
+
+  // Eliminación unificada de Relacion (Borrador / Delete / Diálogo) (T039)
+  const handleConfirmarEliminarRelacion = useCallback(
+    async () => {
+      if (!relacionAEliminar || !diagramaActivoId || isPendingOperacion) return;
+      const idRelacion = relacionAEliminar.id;
+
+      if (relacionSeleccionadaId === idRelacion) {
+        setRelacionSeleccionadaId(null);
+      }
+      setRelacionAEliminar(null);
+
+      try {
+        await encolarOperacion(
+          "ELIMINAR_RELACION",
+          { idRelacion },
+          { actionId: crypto.randomUUID() }
+        );
+      } catch {
+        appToast.error("Error", "No se pudo registrar la eliminación de la relación.");
+      }
+    },
+    [
+      relacionAEliminar,
+      diagramaActivoId,
+      relacionSeleccionadaId,
+      encolarOperacion,
+      isPendingOperacion,
+      setRelacionSeleccionadaId,
+    ]
   );
 
   return (
@@ -1073,8 +1392,6 @@ export function EditorProyecto({
         <LienzoDiagrama
           idDiagramaActivo={diagramaActivoId}
           diagramaActivo={detalleVisible}
-          clases={clasesLocales}
-          claseSeleccionadaId={claseSeleccionadaId}
           puedeEditar={puedeEditar}
           cargandoDetalle={cargandoDetalle}
           herramientaActiva={herramientaActiva}
@@ -1082,6 +1399,11 @@ export function EditorProyecto({
           viewportInicial={obtenerViewport(diagramaActivoId)}
           onViewportChange={handleViewportChange}
           onSeleccionarClase={handleSeleccionarClase}
+          onAbrirPropiedadesClase={handleAbrirPropiedadesClase}
+          onSeleccionarRelacion={handleSeleccionarRelacion}
+          onRenombrarRelacionInline={handleRenombrarRelacionInline}
+          onEliminarRelacion={(rel) => setRelacionAEliminar(rel)}
+          onConectarRelacion={handleConectarRelacion}
           onCrearClaseEnPosicion={handleCrearClaseEnPosicion}
           onMoverClaseStop={handleMoverClaseStop}
           onRedimensionarClaseStop={handleRedimensionarClaseStop}
@@ -1089,12 +1411,13 @@ export function EditorProyecto({
           onEliminarClase={setClaseAEliminar}
           onAgregarAtributo={handleAbrirNuevoAtributo}
           onSeleccionarAtributo={handleSeleccionarAtributo}
+          onAbrirPropiedadesAtributo={handleAbrirPropiedadesAtributo}
           onCopiarAtributo={handleCopiarAtributo}
           onReordenarAtributo={handleReordenarAtributo}
         />
 
-        {/* Panel Lateral Contextual de Propiedades (Estilo Draw.io) */}
-        {claseSeleccionada && (
+        {/* Panel Lateral Contextual de Propiedades de Clase / Atributo */}
+        {panelPropiedadesAbierto && claseSeleccionada && (
           <PanelPropiedadesDiagrama
             clase={claseSeleccionada}
             atributoSeleccionado={atributoSeleccionado}
@@ -1110,6 +1433,85 @@ export function EditorProyecto({
             onReordenarAtributo={handleReordenarAtributo}
           />
         )}
+
+        {/* Panel Flotante Izquierdo para Configurar Relaciones UML */}
+        <PanelRelaciones
+          abierto={herramientaActiva === "relacion" && puedeEditar}
+          tipo={tipoRelacionPendiente}
+          cardinalidades={cardinalidadesPendientes}
+          conexionPendiente={conexionPendiente}
+          onCerrar={() => {
+            setHerramientaActiva("seleccion");
+            setTipoRelacionPendiente(undefined);
+            setConexionPendiente(false);
+          }}
+          onElegirTipo={(tipo, requiere) => {
+            setTipoRelacionPendiente(tipo);
+            if (!requiere) {
+              setConexionPendiente(true);
+            }
+          }}
+          onElegirCardinalidad={(origen, destino) => {
+            setCardinalidadesPendientes([origen, destino]);
+            setConexionPendiente(true);
+          }}
+          onActualizarCardinalidades={(origen, destino) => {
+            setCardinalidadesPendientes([origen, destino]);
+          }}
+          onIntercambiar={() => {
+            setCardinalidadesPendientes(([o, d]) => [d, o]);
+          }}
+          onCancelarConexion={() => {
+            setConexionPendiente(false);
+            setTipoRelacionPendiente(undefined);
+            setHerramientaActiva("seleccion");
+          }}
+          onVolverTipos={() => {
+            setTipoRelacionPendiente(undefined);
+            setConexionPendiente(false);
+          }}
+          onVolverCardinalidad={() => {
+            setConexionPendiente(false);
+          }}
+        />
+
+        <PropuestaEstructuraNmForm
+          open={Boolean(relacionNmPendiente)}
+          origen={relacionNmPendiente?.origen ?? null}
+          destino={relacionNmPendiente?.destino ?? null}
+          atributoOrigenId={relacionNmPendiente?.atributoOrigenId ?? null}
+          atributoDestinoId={relacionNmPendiente?.atributoDestinoId ?? null}
+          onOpenChange={(open) => {
+            if (!open) setRelacionNmPendiente(null);
+          }}
+          onConfirmar={handleConfirmarEstructuraNm}
+        />
+
+        {/* Modal de Materialización / Propuesta de Referencia FK */}
+        <PropuestaReferenciaFkModal
+          abierto={Boolean(relacionPendienteFk)}
+          relacion={relacionPendienteFk}
+          clases={clasesLocales}
+          onOpenChange={(open) => {
+            if (!open) {
+              setRelacionPendienteFk(null);
+            }
+          }}
+          onConfirmar={handleConfirmarPropuestaFk}
+        />
+
+        {/* Modal para eliminar relación UML */}
+        <ModalEliminarRelacion
+          relacion={relacionAEliminar}
+          clases={clasesLocales}
+          isPending={isPendingOperacion}
+          onOpenChange={(open) => {
+            if (!open && !isPendingOperacion) {
+              setRelacionAEliminar(null);
+            }
+          }}
+          onConfirmar={handleConfirmarEliminarRelacion}
+        />
 
         {/* Controles de Zoom y Navegación (Inferior Izquierda) */}
         <ControlesZoom />

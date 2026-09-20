@@ -26,6 +26,7 @@ export const AtributoReadResponseSchema = z.object({
   es_unico: z.boolean(),
   valor_por_defecto: z.string().nullable(),
   orden_de_posicion: z.number().int(),
+  procedencia: z.enum(["manual", "sistema_clase", "sistema_fk"]).default("manual"),
 });
 
 export const ListaAtributosResponseSchema = z.object({
@@ -34,23 +35,52 @@ export const ListaAtributosResponseSchema = z.object({
 
 // ── Esquemas de Mutación / Petición ──────────────────────────────────────────
 
-export const CrearAtributoInputSchema = z.object({
-  idAtributo: z.string().uuid("El ID de atributo debe ser un UUID válido.").optional(),
-  tipoDato: TipoDatoSchema,
-  nombre: z
-    .string()
-    .trim()
-    .min(1, "El nombre del atributo es obligatorio.")
-    .max(50, "El nombre no puede superar 50 caracteres."),
-  longitud: z.number().int().min(1).nullable().optional(),
-  precision: z.number().int().min(1).nullable().optional(),
-  escala: z.number().int().min(0).nullable().optional(),
-  esLlavePrimaria: z.boolean().optional().default(false),
-  permiteNulo: z.boolean().optional().default(true),
-  esUnico: z.boolean().optional().default(false),
-  valorPorDefecto: z.string().trim().nullable().optional(),
-  ordenDePosicion: z.number().int().min(1).nullable().optional(),
-});
+export const CrearAtributoInputSchema = z
+  .object({
+    idAtributo: z.string().uuid("El ID de atributo debe ser un UUID válido.").optional(),
+    tipoDato: TipoDatoSchema,
+    nombre: z
+      .string()
+      .trim()
+      .min(1, "El nombre del atributo es obligatorio.")
+      .max(50, "El nombre no puede superar 50 caracteres."),
+    longitud: z.number().int().min(1, "La longitud debe ser mayor a 0.").nullable().optional(),
+    precision: z.number().int().min(1, "La precisión debe ser mayor a 0.").nullable().optional(),
+    escala: z.number().int().min(0, "La escala debe ser mayor o igual a 0.").nullable().optional(),
+    esLlavePrimaria: z.boolean().optional().default(false),
+    permiteNulo: z.boolean().optional().default(true),
+    esUnico: z.boolean().optional().default(false),
+    valorPorDefecto: z.string().trim().nullable().optional(),
+    ordenDePosicion: z.number().int().min(1).nullable().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.tipoDato === "varchar") {
+        return typeof data.longitud === "number" && data.longitud > 0;
+      }
+      return true;
+    },
+    {
+      message: "La longitud es obligatoria y debe ser mayor a 0 para varchar.",
+      path: ["longitud"],
+    }
+  )
+  .refine(
+    (data) => {
+      if (data.tipoDato === "decimal") {
+        return (
+          typeof data.precision === "number" &&
+          typeof data.escala === "number" &&
+          data.escala <= data.precision
+        );
+      }
+      return true;
+    },
+    {
+      message: "La precisión y escala son obligatorias, y la escala no puede superar la precisión.",
+      path: ["escala"],
+    }
+  );
 
 export const ActualizarAtributoInputSchema = z.object({
   tipoDato: TipoDatoSchema.optional(),
@@ -63,9 +93,9 @@ export const ActualizarAtributoInputSchema = z.object({
   longitud: z.number().int().min(1).nullable().optional(),
   precision: z.number().int().min(1).nullable().optional(),
   escala: z.number().int().min(0).nullable().optional(),
-  esLlavePrimaria: z.boolean().optional(),
   permiteNulo: z.boolean().optional(),
   esUnico: z.boolean().optional(),
   valorPorDefecto: z.string().trim().nullable().optional(),
   ordenDePosicion: z.number().int().min(1).nullable().optional(),
 });
+

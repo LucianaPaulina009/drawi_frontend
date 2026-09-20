@@ -59,6 +59,7 @@ export const atributoMapper = {
       esUnico: raw.es_unico,
       valorPorDefecto: raw.valor_por_defecto,
       ordenDePosicion: raw.orden_de_posicion,
+      procedencia: raw.procedencia,
     };
   },
 

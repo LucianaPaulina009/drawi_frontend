@@ -47,6 +47,7 @@ type RequestConfig = {
   withAuth?: boolean;
   cache?: RequestCache;
   body?: unknown;
+  headers?: HeadersInit;
 };
 
 type DataRequestConfig<TParsed, TResult> = RequestConfig & {
@@ -86,11 +87,12 @@ type FileRequestConfig = RequestConfig & {
 // ─── Internos ────────────────────────────────────────────────────────────────
 
 /** Construye los headers de la petici\u00f3n, incluyendo el JWT si se proporciona. */
-function buildHeaders(token?: string | null, hasJsonBody?: boolean): HeadersInit {
+function buildHeaders(token?: string | null, hasJsonBody?: boolean, headers?: HeadersInit): HeadersInit {
   return {
     Accept: "application/json",
     ...(hasJsonBody ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...headers,
   };
 }
 
@@ -112,7 +114,7 @@ async function doRequest(config: RequestConfig, token: string | null): Promise<R
   const hasBody = config.body !== undefined;
   return fetch(config.url, {
     method: config.method,
-    headers: buildHeaders(token, hasBody),
+    headers: buildHeaders(token, hasBody, config.headers),
     cache: config.cache,
     ...(hasBody ? { body: JSON.stringify(config.body) } : {}),
   });
@@ -125,7 +127,7 @@ async function doFormRequest(
 ): Promise<Response> {
   return fetch(config.url, {
     method: config.method,
-    headers: buildHeaders(token, false),
+    headers: buildHeaders(token, false, config.headers),
     cache: config.cache,
     body: config.body,
   });
