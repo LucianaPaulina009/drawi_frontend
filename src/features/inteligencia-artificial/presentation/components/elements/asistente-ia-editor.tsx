@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAsistenteIa } from "../../hooks/use-asistente-ia";
 import { useGrabacionAudio } from "../../hooks/use-grabacion-audio";
+import { useHistorialInteraccionesIa } from "../../hooks/use-historial-interacciones-ia";
 import { useEditorDiagramaStore } from "@/features/diagramas/presentation/stores/editor-diagrama.store";
 import { MascotaDrawi } from "./mascota-drawi";
 import { PanelChatDrawi } from "./panel-chat-drawi";
@@ -23,6 +24,7 @@ export function AsistenteIaEditor({
   className,
 }: AsistenteIaEditorProps) {
   const asistente = useAsistenteIa(diagramaId);
+  const historialIa = useHistorialInteraccionesIa(diagramaId);
   const grabacion = useGrabacionAudio();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [modoImagen, setModoImagen] = useState(false);
@@ -183,6 +185,8 @@ export function AsistenteIaEditor({
         onCerrar={onCerrar}
         asistente={asistente}
         grabacion={grabacion}
+        historialIa={historialIa}
+        onEnviarMensaje={historialIa.enviarMensaje}
       />
     </div>
   );

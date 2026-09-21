@@ -344,7 +344,10 @@ export function MascotaDrawi({
       {/* Contenedor interactivo */}
       <div
         ref={petRef}
-        className="relative pointer-events-auto flex items-end justify-end"
+        className={cn(
+          "relative flex items-end justify-end",
+          abierto ? "pointer-events-none" : "pointer-events-auto"
+        )}
       >
         {/* Sombra de piso suave 2D con perspectiva 3D */}
         <motion.div
@@ -431,22 +434,20 @@ export function MascotaDrawi({
                       )}
                     </AnimatePresence>
 
-                    {/* Botón de acción */}
+                    {/* Botón de acción circular */}
                     <motion.button
                       type="button"
                       role="menuitem"
                       aria-label={btn.label}
                       title={btn.label}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleActionClick(btn.id);
-                      }}
+                      tabIndex={isMenuOpen ? 0 : -1}
+                      onClick={() => handleActionClick(btn.id)}
                       onMouseEnter={() => setHoveredButton(btn.id)}
                       onMouseLeave={() => setHoveredButton(null)}
-                      whileHover={{ scale: 1.15, rotate: 4 }}
-                      whileTap={{ scale: 0.92 }}
+                      whileHover={{ scale: 1.14 }}
+                      whileTap={{ scale: 0.88 }}
                       className={cn(
-                        "w-11 h-11 rounded-full flex items-center justify-center text-white relative cursor-pointer outline-none transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900",
+                        "w-12 h-12 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none border border-white/60 select-none",
                         isActive && "ring-2 ring-white ring-offset-2 ring-offset-slate-900 scale-105"
                       )}
                       style={{
@@ -493,7 +494,10 @@ export function MascotaDrawi({
           aria-expanded={abierto || isMenuOpen}
           aria-haspopup="menu"
           title="Asistente DRAWI (Prototipo interactivo de IA)"
-          className="relative flex items-center justify-center cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none rounded-full border-none bg-transparent"
+          className={cn(
+            "relative flex items-center justify-center cursor-pointer outline-none focus:outline-none focus:ring-0 focus-visible:outline-none rounded-full border-none bg-transparent",
+            abierto && "pointer-events-none"
+          )}
           initial={false}
           whileTap={{ scale: abierto ? 0.7 : isRetreated ? 0.78 : 1.15 }}
           animate={{

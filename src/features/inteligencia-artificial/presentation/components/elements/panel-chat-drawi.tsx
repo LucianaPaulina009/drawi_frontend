@@ -6,14 +6,17 @@ import {
   AlertCircle,
   ArrowUp,
   Info,
+  Loader2,
   Mic,
   Paperclip,
   Sparkles,
+  User,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GrabacionAudioResult } from "../../hooks/use-grabacion-audio";
 import type { useAsistenteIa } from "../../hooks/use-asistente-ia";
+import type { useHistorialInteraccionesIa } from "../../hooks/use-historial-interacciones-ia";
 import { AdjuntoImagenDrawi } from "./adjunto-imagen-drawi";
 import { ControlAudioDrawi } from "./control-audio-drawi";
 
@@ -22,6 +25,8 @@ export interface PanelChatDrawiProps {
   onCerrar: () => void;
   asistente: ReturnType<typeof useAsistenteIa>;
   grabacion: GrabacionAudioResult;
+  historialIa?: ReturnType<typeof useHistorialInteraccionesIa>;
+  onEnviarMensaje?: (texto: string) => Promise<boolean>;
 }
 
 export function PanelChatDrawi({
@@ -29,15 +34,17 @@ export function PanelChatDrawi({
   onCerrar,
   asistente,
   grabacion,
+  historialIa,
+  onEnviarMensaje,
 }: PanelChatDrawiProps) {
   const {
-    mensajes,
+    mensajes: mensajesLocales,
     textoEdicion,
     setTextoEdicion,
     imagenTemporal,
     errorLocal,
     avisoIndisponibilidad,
-    enviarMensaje,
+    enviarMensaje: enviarMensajeLocal,
     adjuntarImagen,
     removerImagen,
     limpiarAvisoIndisponibilidad,
@@ -48,14 +55,19 @@ export function PanelChatDrawi({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const inputTextoRef = useRef<HTMLInputElement | null>(null);
 
+  const interacciones = historialIa ? historialIa.interacciones : [];
+  const cantidadMensajes = historialIa
+    ? interacciones.length
+    : mensajesLocales.length;
+
   // Auto-scroll al final al recibir nuevos mensajes
   useEffect(() => {
-    if (abierto && mensajes.length > 0) {
+    if (abierto && cantidadMensajes > 0) {
       if (typeof messagesEndRef.current?.scrollIntoView === "function") {
         messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
       }
     }
-  }, [abierto, mensajes.length]);
+  }, [abierto, cantidadMensajes]);
 
   // Foco inicial en el input al abrir el panel
   useEffect(() => {
@@ -66,18 +78,29 @@ export function PanelChatDrawi({
     }
   }, [abierto]);
 
-  const handleEnviar = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const enviado = enviarMensaje();
-    if (enviado) {
-      inputTextoRef.current?.focus();
+  const handleEnviar = async (e?: React.FormEvent<HTMLFormElement>) => {
+    if (e) {
+      e.preventDefault();
     }
+    const texto = textoEdicion.trim();
+    if (!texto || historialIa?.enviando) return;
+
+    setTextoEdicion("");
+
+    if (onEnviarMensaje) {
+      await onEnviarMensaje(texto);
+    } else if (historialIa) {
+      await historialIa.enviarMensaje(texto);
+    } else {
+      enviarMensajeLocal(texto);
+    }
+
+    inputTextoRef.current?.focus();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && e.shiftKey) {
       e.preventDefault();
-      handleEnviar();
     }
   };
 
@@ -89,6 +112,8 @@ export function PanelChatDrawi({
     e.target.value = "";
   };
 
+  const errorVisible = historialIa?.error || errorLocal;
+
   return (
     <AnimatePresence>
       {abierto && (
@@ -97,7 +122,7 @@ export function PanelChatDrawi({
           animate={{ opacity: 1, x: 0, scale: 1 }}
           exit={{ opacity: 0, x: 80, scale: 0.95 }}
           transition={{ type: "spring", stiffness: 320, damping: 28 }}
-          className="fixed top-[84px] bottom-6 right-6 w-[390px] max-w-[calc(100vw-3rem)] z-40 flex flex-col rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl shadow-slate-900/10 overflow-hidden select-text pointer-events-auto"
+          className="fixed top-[84px] bottom-6 right-6 w-[390px] max-w-[calc(100vw-3rem)] z-50 flex flex-col rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-2xl shadow-slate-900/10 overflow-hidden select-text pointer-events-auto"
           data-testid="panel-chat-drawi"
           aria-label="Panel de Asistente IA DRAWI"
         >
@@ -117,7 +142,9 @@ export function PanelChatDrawi({
                   </h3>
                   <Sparkles className="w-3.5 h-3.5 text-sky-500" />
                 </div>
-                <p className="text-[10.5px] text-slate-400 font-medium">Asistente de modelado UML</p>
+                <p className="text-[10.5px] text-slate-400 font-medium">
+                  Modelado colaborativo con IA
+                </p>
               </div>
             </div>
 
@@ -137,12 +164,12 @@ export function PanelChatDrawi({
             </div>
           </div>
 
-          {/* ── Banner Informativo de Sesión Local ────────────────────── */}
+          {/* ── Banner Informativo de Contexto ────────────────────────── */}
           <div className="border-b border-sky-100 bg-sky-50/60 px-4 py-2 text-xs text-sky-800">
             <div className="flex items-center space-x-2">
               <Info className="h-3.5 w-3.5 flex-shrink-0 text-sky-600" />
               <p className="text-[11px] leading-relaxed">
-                Las consultas y adjuntos son temporales para esta sesión. Sin llamadas externas.
+                Historial persistente y compartido para esta página del diagrama.
               </p>
             </div>
           </div>
@@ -153,7 +180,9 @@ export function PanelChatDrawi({
               role="status"
               className="mx-4 mt-3 flex items-start justify-between rounded-2xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 shadow-sm"
             >
-              <p className="flex-1 text-[11px] leading-relaxed">{avisoIndisponibilidad}</p>
+              <p className="flex-1 text-[11px] leading-relaxed">
+                {avisoIndisponibilidad}
+              </p>
               <button
                 type="button"
                 onClick={limpiarAvisoIndisponibilidad}
@@ -165,18 +194,21 @@ export function PanelChatDrawi({
             </div>
           )}
 
-          {errorLocal && (
+          {errorVisible && (
             <div
               role="alert"
               className="mx-4 mt-3 flex items-start justify-between rounded-2xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-900 shadow-sm"
             >
               <div className="flex items-start space-x-2">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-red-600" />
-                <p className="text-[11px]">{errorLocal}</p>
+                <p className="text-[11px]">{errorVisible}</p>
               </div>
               <button
                 type="button"
-                onClick={limpiarErrorLocal}
+                onClick={() => {
+                  limpiarErrorLocal();
+                  historialIa?.limpiarError();
+                }}
                 aria-label="Cerrar mensaje de error"
                 className="ml-2 text-red-700 hover:text-red-900 cursor-pointer"
               >
@@ -187,24 +219,109 @@ export function PanelChatDrawi({
 
           {/* ── Historial de Mensajes ──────────────────────────────────── */}
           <div
-            className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-white scrollbar-thin scrollbar-thumb-slate-200"
+            className="flex-1 overflow-y-auto p-4 space-y-4 bg-white scrollbar-thin scrollbar-thumb-slate-200"
             data-testid="historial-mensajes"
           >
-            {mensajes.length === 0 ? (
+            {historialIa?.cargando && interacciones.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center text-slate-400 gap-2">
+                <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
+                <p className="text-xs text-slate-500">Cargando conversación...</p>
+              </div>
+            ) : cantidadMensajes === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-slate-400 px-4 py-8">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-50 border border-sky-100 text-sky-500 mb-3 shadow-sm">
                   <Sparkles className="h-6 w-6 text-sky-500" />
                 </div>
                 <p className="text-sm font-semibold text-slate-800">
-                  No hay consultas en esta sesión
+                  Comienza a conversar con DRAWI
                 </p>
                 <p className="mt-1 text-xs text-slate-500 leading-normal max-w-xs">
-                  Escribe un mensaje, sube una imagen o graba una nota de voz para preparar el
-                  contexto de tu diagrama.
+                  Pregunta sobre modelado UML o solicita crear clases, atributos y
+                  relaciones en lenguaje natural.
                 </p>
               </div>
+            ) : historialIa ? (
+              interacciones.map((item) => {
+                const hora = new Date(item.creadoEn).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+
+                return (
+                  <div key={item.id} className="space-y-3">
+                    {/* Mensaje de usuario */}
+                    {item.entradaUsuario && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ duration: 0.18 }}
+                        className="flex flex-col items-end"
+                      >
+                        <div className="max-w-[85%] px-4 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-xs bg-gradient-to-r from-sky-500 to-sky-600 text-white rounded-tr-xs">
+                          <p className="whitespace-pre-wrap">{item.entradaUsuario}</p>
+                        </div>
+                        <div className="flex items-center gap-1 mt-1 px-1 text-[10px] text-slate-400">
+                          {item.idUsuario && item.idUsuario !== "yo" && (
+                            <span className="flex items-center gap-0.5 font-medium text-slate-500">
+                              <User className="w-2.5 h-2.5" />
+                              {item.idUsuario.slice(0, 8)}
+                            </span>
+                          )}
+                          <span>{hora}</span>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Respuesta IA o Estado de Procesamiento */}
+                    {(item.estado === "PROCESANDO" || item.estado === "PENDIENTE") &&
+                    !item.respuestaIa ? (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex items-start gap-2.5"
+                      >
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-sky-400 to-sky-600 flex items-center justify-center text-white flex-shrink-0 mt-0.5 shadow-xs">
+                          <Sparkles className="w-3 h-3 animate-spin" />
+                        </div>
+                        <div className="max-w-[85%] px-4 py-3 rounded-2xl text-[13px] bg-slate-50 border border-slate-200/80 text-slate-600 rounded-tl-xs shadow-2xs flex items-center gap-2">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-500 animate-bounce [animation-delay:-0.3s]" />
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-500 animate-bounce [animation-delay:-0.15s]" />
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-500 animate-bounce" />
+                          <span className="text-xs text-slate-400 ml-1">DRAWI pensando...</span>
+                        </div>
+                      </motion.div>
+                    ) : item.respuestaIa ? (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ duration: 0.2 }}
+                        className="flex items-start gap-2.5"
+                      >
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-sky-400 to-sky-600 flex items-center justify-center text-white flex-shrink-0 mt-0.5 shadow-xs">
+                          <Sparkles className="w-3 h-3" />
+                        </div>
+                        <div className="flex flex-col items-start max-w-[85%]">
+                          <div
+                            className={cn(
+                              "px-4 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-2xs rounded-tl-xs",
+                              item.estado === "ERROR"
+                                ? "bg-red-50 border border-red-200 text-red-800"
+                                : "bg-slate-50 border border-slate-200/80 text-slate-800"
+                            )}
+                          >
+                            <p className="whitespace-pre-wrap">{item.respuestaIa}</p>
+                          </div>
+                          <span className="text-[10px] text-slate-400 mt-1 px-1">
+                            DRAWI • {hora}
+                          </span>
+                        </div>
+                      </motion.div>
+                    ) : null}
+                  </div>
+                );
+              })
             ) : (
-              mensajes.map((msg) => {
+              mensajesLocales.map((msg) => {
                 const hora = new Date(msg.creadoEn).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -220,7 +337,9 @@ export function PanelChatDrawi({
                     <div className="max-w-[85%] px-4 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-xs bg-gradient-to-r from-sky-500 to-sky-600 text-white rounded-tr-xs">
                       <p className="whitespace-pre-wrap">{msg.contenido}</p>
                     </div>
-                    <span className="text-[10px] text-slate-400 mt-1 px-1">{hora}</span>
+                    <span className="text-[10px] text-slate-400 mt-1 px-1">
+                      {hora}
+                    </span>
                   </motion.div>
                 );
               })
@@ -233,7 +352,10 @@ export function PanelChatDrawi({
           {(imagenTemporal || grabacion.estado !== "inactivo") && (
             <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/70 space-y-2">
               {imagenTemporal && (
-                <AdjuntoImagenDrawi imagen={imagenTemporal} onRemover={removerImagen} />
+                <AdjuntoImagenDrawi
+                  imagen={imagenTemporal}
+                  onRemover={removerImagen}
+                />
               )}
               <ControlAudioDrawi grabacion={grabacion} />
             </div>
@@ -286,26 +408,29 @@ export function PanelChatDrawi({
                 onKeyDown={handleKeyDown}
                 placeholder="Escribe un mensaje o consulta..."
                 aria-label="Consulta para el asistente IA"
-                className="flex-1 bg-transparent text-slate-800 text-xs sm:text-sm placeholder:text-slate-400 focus:outline-none"
+                disabled={historialIa?.enviando}
+                className="flex-1 bg-transparent text-slate-800 text-xs sm:text-sm placeholder:text-slate-400 focus:outline-none disabled:opacity-50"
               />
 
               {/* Botón de Enviar con flecha hacia arriba */}
-              <motion.button
+              <button
                 type="submit"
-                disabled={!textoEdicion.trim()}
+                disabled={!textoEdicion.trim() || historialIa?.enviando}
                 aria-label="Enviar consulta"
                 title="Enviar"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
                 className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center transition-all",
-                  textoEdicion.trim()
-                    ? "bg-gradient-to-r from-sky-500 to-sky-600 text-white shadow-sm shadow-sky-500/25 cursor-pointer hover:from-sky-600 hover:to-sky-700"
+                  "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 shrink-0",
+                  textoEdicion.trim() && !historialIa?.enviando
+                    ? "bg-gradient-to-r from-sky-500 to-sky-600 text-white shadow-sm shadow-sky-500/25 cursor-pointer hover:from-sky-600 hover:to-sky-700 hover:scale-105 active:scale-95"
                     : "bg-slate-100 text-slate-300 cursor-not-allowed"
                 )}
               >
-                <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-              </motion.button>
+                {historialIa?.enviando ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                ) : (
+                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                )}
+              </button>
             </form>
           </div>
         </motion.aside>

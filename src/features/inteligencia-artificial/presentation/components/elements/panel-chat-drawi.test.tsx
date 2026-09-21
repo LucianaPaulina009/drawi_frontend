@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { useAsistenteIa } from "../../hooks/use-asistente-ia";
 import type { GrabacionAudioResult } from "../../hooks/use-grabacion-audio";
+import type { useHistorialInteraccionesIa } from "../../hooks/use-historial-interacciones-ia";
 import { PanelChatDrawi } from "./panel-chat-drawi";
 
 describe("PanelChatDrawi", () => {
@@ -44,6 +45,19 @@ describe("PanelChatDrawi", () => {
     ...overrides,
   });
 
+  const createMockHistorial = (
+    overrides?: Partial<ReturnType<typeof useHistorialInteraccionesIa>>
+  ): ReturnType<typeof useHistorialInteraccionesIa> => ({
+    interacciones: [],
+    cargando: false,
+    enviando: false,
+    error: null,
+    enviarMensaje: vi.fn(async () => true),
+    cargarHistorial: vi.fn(async () => {}),
+    limpiarError: vi.fn(),
+    ...overrides,
+  });
+
   it("no renderiza nada cuando abierto es false", () => {
     const { container } = render(
       <PanelChatDrawi
@@ -56,31 +70,74 @@ describe("PanelChatDrawi", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("renderiza el panel con banner informativo de indisponibilidad y estado vacío", () => {
+  it("renderiza el panel con banner informativo de contexto e historial persistido", () => {
+    const mockHistorial = createMockHistorial({
+      interacciones: [
+        {
+          id: "int-1",
+          idDiagrama: "11111111-1111-1111-1111-111111111111",
+          idUsuario: "user-1",
+          tipo: "CONVERSACION",
+          estado: "COMPLETADO",
+          entradaUsuario: "Hola DRAWI",
+          respuestaIa: "¡Hola! Estoy listo para modelar.",
+          claveIdempotencia: "88888888-8888-8888-8888-888888888888",
+          creadoEn: "2026-09-20T12:00:00Z",
+        },
+      ],
+    });
+
     render(
       <PanelChatDrawi
         abierto={true}
         onCerrar={vi.fn()}
         asistente={createMockAsistente()}
         grabacion={createMockGrabacion()}
+        historialIa={mockHistorial}
       />
     );
 
     expect(screen.getByText("DRAWI - Asistente IA")).toBeInTheDocument();
     expect(
-      screen.getByText(/Las consultas y adjuntos son temporales para esta sesión/)
+      screen.getByText(/Historial persistente y compartido para esta página del diagrama/)
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("No hay consultas en esta sesión")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Hola DRAWI")).toBeInTheDocument();
+    expect(screen.getByText("¡Hola! Estoy listo para modelar.")).toBeInTheDocument();
   });
 
-  it("permite escribir y enviar consultas al historial local", () => {
-    const mockEnviar = vi.fn(() => true);
+  it("permite escribir y enviar consultas al hook de historial persistido", () => {
+    const mockEnviar = vi.fn(async () => true);
     const mockSetTexto = vi.fn();
     const asistente = createMockAsistente({
       textoEdicion: "¿Cómo añado una clave foránea?",
+      setTextoEdicion: mockSetTexto,
+    });
+    const mockHistorial = createMockHistorial({
       enviarMensaje: mockEnviar,
+    });
+
+    render(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={asistente}
+        grabacion={createMockGrabacion()}
+        historialIa={mockHistorial}
+      />
+    );
+
+    const botonEnviar = screen.getByRole("button", { name: "Enviar consulta" });
+    expect(botonEnviar).not.toBeDisabled();
+
+    fireEvent.click(botonEnviar);
+    expect(mockEnviar).toHaveBeenCalledWith("¿Cómo añado una clave foránea?");
+  });
+
+  it("escribir 'Hola DRAWI' y hacer click en el botón azul ejecuta exactamente una llamada al callback de submit", () => {
+    const mockOnEnviarMensaje = vi.fn(async () => true);
+    const mockSetTexto = vi.fn();
+    const asistente = createMockAsistente({
+      textoEdicion: "Hola DRAWI",
       setTextoEdicion: mockSetTexto,
     });
 
@@ -90,32 +147,27 @@ describe("PanelChatDrawi", () => {
         onCerrar={vi.fn()}
         asistente={asistente}
         grabacion={createMockGrabacion()}
+        onEnviarMensaje={mockOnEnviarMensaje}
       />
     );
 
     const botonEnviar = screen.getByRole("button", { name: "Enviar consulta" });
     expect(botonEnviar).not.toBeDisabled();
+    expect(botonEnviar).toHaveAttribute("type", "submit");
 
     fireEvent.click(botonEnviar);
-    expect(mockEnviar).toHaveBeenCalledTimes(1);
+
+    expect(mockOnEnviarMensaje).toHaveBeenCalledTimes(1);
+    expect(mockOnEnviarMensaje).toHaveBeenCalledWith("Hola DRAWI");
+    expect(mockSetTexto).toHaveBeenCalledWith("");
   });
 
-  it("muestra el historial de mensajes registrados cronológicamente", () => {
-    const mensajesMock = [
-      {
-        id: "msg-1",
-        contenido: "Primera consulta de prueba",
-        creadoEn: Date.now() - 1000,
-      },
-      {
-        id: "msg-2",
-        contenido: "Segunda consulta de prueba",
-        creadoEn: Date.now(),
-      },
-    ];
-
+  it("escribir 'Hola DRAWI' y presionar Enter ejecuta exactamente una llamada al callback de submit", () => {
+    const mockOnEnviarMensaje = vi.fn(async () => true);
+    const mockSetTexto = vi.fn();
     const asistente = createMockAsistente({
-      mensajes: mensajesMock,
+      textoEdicion: "Hola DRAWI",
+      setTextoEdicion: mockSetTexto,
     });
 
     render(
@@ -124,10 +176,69 @@ describe("PanelChatDrawi", () => {
         onCerrar={vi.fn()}
         asistente={asistente}
         grabacion={createMockGrabacion()}
+        onEnviarMensaje={mockOnEnviarMensaje}
       />
     );
 
-    expect(screen.getByText("Primera consulta de prueba")).toBeInTheDocument();
-    expect(screen.getByText("Segunda consulta de prueba")).toBeInTheDocument();
+    const input = screen.getByRole("textbox", { name: "Consulta para el asistente IA" });
+    fireEvent.submit(input.closest("form")!);
+
+    expect(mockOnEnviarMensaje).toHaveBeenCalledTimes(1);
+    expect(mockOnEnviarMensaje).toHaveBeenCalledWith("Hola DRAWI");
+    expect(mockSetTexto).toHaveBeenCalledWith("");
+  });
+
+  it("no envía mensaje si el texto está vacío o contiene solo espacios", () => {
+    const mockOnEnviarMensaje = vi.fn(async () => true);
+    const asistente = createMockAsistente({
+      textoEdicion: "   ",
+    });
+
+    render(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={asistente}
+        grabacion={createMockGrabacion()}
+        onEnviarMensaje={mockOnEnviarMensaje}
+      />
+    );
+
+    const botonEnviar = screen.getByRole("button", { name: "Enviar consulta" });
+    expect(botonEnviar).toBeDisabled();
+
+    fireEvent.click(botonEnviar);
+    expect(mockOnEnviarMensaje).not.toHaveBeenCalled();
+  });
+
+  it("bloquea el submit y deshabilita controles mientras enviando es true", () => {
+    const mockOnEnviarMensaje = vi.fn(async () => true);
+    const asistente = createMockAsistente({
+      textoEdicion: "Consulta en progreso",
+    });
+    const mockHistorial = createMockHistorial({
+      enviando: true,
+      enviarMensaje: mockOnEnviarMensaje,
+    });
+
+    render(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={asistente}
+        grabacion={createMockGrabacion()}
+        historialIa={mockHistorial}
+        onEnviarMensaje={mockOnEnviarMensaje}
+      />
+    );
+
+    const input = screen.getByRole("textbox", { name: "Consulta para el asistente IA" });
+    const botonEnviar = screen.getByRole("button", { name: "Enviar consulta" });
+
+    expect(input).toBeDisabled();
+    expect(botonEnviar).toBeDisabled();
+
+    fireEvent.click(botonEnviar);
+    expect(mockOnEnviarMensaje).not.toHaveBeenCalled();
   });
 });
