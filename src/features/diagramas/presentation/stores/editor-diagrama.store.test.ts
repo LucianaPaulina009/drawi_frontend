@@ -407,4 +407,209 @@ describe("editor-diagrama.store", () => {
     expect(estado.operacionesPendientes.length).toBe(1);
     expect(estado.clases.length).toBe(1);
   });
+
+  it("elimina atributos sistema_fk al eliminar relación pero preserva atributos manuales y reordena posiciones", () => {
+    const detalleConRelacion = {
+      ...detalle,
+      clases: [
+        {
+          id: "c-origen",
+          idDiagrama: detalle.id,
+          nombre: "Usuario",
+          posicionX: 0,
+          posicionY: 0,
+          ancho: 200,
+          atributos: [
+            {
+              id: "attr-pk-orig",
+              idClase: "c-origen",
+              nombre: "id",
+              tipoDato: "integer",
+              longitud: null,
+              precision: null,
+              escala: null,
+              permiteNulo: false,
+              esLlavePrimaria: true,
+              esUnico: true,
+              valorPorDefecto: null,
+              ordenDePosicion: 1,
+              procedencia: "sistema_clase" as const,
+            },
+          ],
+        },
+        {
+          id: "c-destino",
+          idDiagrama: detalle.id,
+          nombre: "Perfil",
+          posicionX: 300,
+          posicionY: 0,
+          ancho: 200,
+          atributos: [
+            {
+              id: "attr-pk-dest",
+              idClase: "c-destino",
+              nombre: "id",
+              tipoDato: "integer",
+              longitud: null,
+              precision: null,
+              escala: null,
+              permiteNulo: false,
+              esLlavePrimaria: true,
+              esUnico: true,
+              valorPorDefecto: null,
+              ordenDePosicion: 1,
+              procedencia: "sistema_clase" as const,
+            },
+            {
+              id: "attr-manual-dest",
+              idClase: "c-destino",
+              nombre: "usuario_id_manual",
+              tipoDato: "integer",
+              longitud: null,
+              precision: null,
+              escala: null,
+              permiteNulo: true,
+              esLlavePrimaria: false,
+              esUnico: false,
+              valorPorDefecto: null,
+              ordenDePosicion: 2,
+              procedencia: "manual" as const,
+            },
+            {
+              id: "attr-fk-dest",
+              idClase: "c-destino",
+              nombre: "usuario_id",
+              tipoDato: "integer",
+              longitud: null,
+              precision: null,
+              escala: null,
+              permiteNulo: true,
+              esLlavePrimaria: false,
+              esUnico: false,
+              valorPorDefecto: null,
+              ordenDePosicion: 3,
+              procedencia: "sistema_fk" as const,
+            },
+          ],
+        },
+      ],
+      relaciones: [
+        {
+          id: "rel-1",
+          idDiagrama: detalle.id,
+          idClaseOrigen: "c-origen",
+          idClaseDestino: "c-destino",
+          tipoRelacion: "asociacion" as const,
+          cardinalidadOrigen: "1" as const,
+          cardinalidadDestino: "0..*" as const,
+          conectorOrigen: "right" as const,
+          conectorDestino: "left" as const,
+          nombre: "Tiene",
+          referenciasFk: [
+            {
+              id: "ref-1",
+              idRelacion: "rel-1",
+              idAtributoFk: "attr-fk-dest",
+              idAtributoReferenciado: "attr-pk-orig",
+              onDelete: "NO_ACTION" as const,
+              onUpdate: "NO_ACTION" as const,
+            },
+          ],
+        },
+      ],
+      estructurasNm: [],
+    };
+
+    useEditorDiagramaStore.getState().hidratar("user:diag", detalleConRelacion);
+
+    // 1. Ejecutar operación local ELIMINAR_RELACION
+    const opEliminar: OperacionEditor = {
+      actionId: "op-del-rel-1",
+      scopeKey: "user:diag",
+      secuencia: 1,
+      tipo: "ELIMINAR_RELACION",
+      payload: { idRelacion: "rel-1" },
+      dependsOn: [],
+      estado: "pendiente",
+      intentos: 0,
+      creadaEn: 1000,
+      version: 1,
+    };
+    useEditorDiagramaStore.getState().ejecutarOperacionLocal(opEliminar);
+
+    let estado = useEditorDiagramaStore.getState();
+    expect(estado.relaciones.length).toBe(0);
+    const dest = estado.clases.find((c) => c.id === "c-destino");
+    expect(dest).toBeDefined();
+    expect(dest?.atributos.length).toBe(2);
+    expect(dest?.atributos.some((a) => a.id === "attr-fk-dest")).toBe(false);
+    expect(dest?.atributos.some((a) => a.id === "attr-manual-dest")).toBe(true);
+    expect(dest?.atributos[0].ordenDePosicion).toBe(1);
+    expect(dest?.atributos[1].ordenDePosicion).toBe(2);
+
+    // 2. Servidor confirma la eliminación con efectos autoritativos
+    const reciboEliminacion: ConfirmacionOperacionDiagrama = {
+      actionId: "op-del-rel-1",
+      idDiagrama: detalle.id,
+      tipo: "ELIMINAR_RELACION",
+      efectos: {
+        clasesActualizadas: [
+          {
+            id: "c-destino",
+            idDiagrama: detalle.id,
+            nombre: "Perfil",
+            posicionX: 300,
+            posicionY: 0,
+            ancho: 200,
+            atributos: [
+              {
+                id: "attr-pk-dest",
+                idClase: "c-destino",
+                nombre: "id",
+                tipoDato: "integer",
+                longitud: null,
+                precision: null,
+                escala: null,
+                permiteNulo: false,
+                esLlavePrimaria: true,
+                esUnico: true,
+                valorPorDefecto: null,
+                ordenDePosicion: 1,
+                procedencia: "sistema_clase" as const,
+              },
+              {
+                id: "attr-manual-dest",
+                idClase: "c-destino",
+                nombre: "usuario_id_manual",
+                tipoDato: "integer",
+                longitud: null,
+                precision: null,
+                escala: null,
+                permiteNulo: true,
+                esLlavePrimaria: false,
+                esUnico: false,
+                valorPorDefecto: null,
+                ordenDePosicion: 2,
+                procedencia: "manual" as const,
+              },
+            ],
+          },
+        ],
+        clasesEliminadas: [],
+        relacionesActualizadas: [],
+        relacionesEliminadas: ["rel-1"],
+        estructurasNmActualizadas: [],
+        estructurasNmEliminadas: [],
+      },
+    };
+
+    useEditorDiagramaStore.getState().aplicarRecibo(reciboEliminacion);
+
+    const postConfirmacion = useEditorDiagramaStore.getState();
+    expect(postConfirmacion.operacionesPendientes.length).toBe(0);
+    expect(postConfirmacion.relaciones.length).toBe(0);
+    const destConfirmado = postConfirmacion.clases.find((c) => c.id === "c-destino");
+    expect(destConfirmado?.atributos.length).toBe(2);
+    expect(destConfirmado?.atributos.some((a) => a.id === "attr-fk-dest")).toBe(false);
+  });
 });

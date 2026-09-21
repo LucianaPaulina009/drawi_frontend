@@ -31,8 +31,13 @@ export interface NodoClaseUmlData {
     nuevoOrden: number
   ) => void;
   modoRelacion?: boolean;
+  handlesOcupados?: Set<string>;
   [key: string]: unknown;
 }
+
+const IDS_HANDLES_LEGACY = new Set(["top", "right", "bottom", "left"]);
+export const TAMANO_HITBOX_HANDLE = 24;
+export const TAMANO_PUNTO_VISUAL_HANDLE = 6;
 
 export const NodoClaseUml = memo(function NodoClaseUml({
   data,
@@ -114,102 +119,105 @@ export const NodoClaseUml = memo(function NodoClaseUml({
         </div>
       )}
 
-      <Handle
-        id="top"
-        type="source"
-        position={Position.Top}
-        isConnectable={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableStart={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableEnd={false}
-        className={cn(
-          "!size-2.5 !border-0 !bg-[#91bcfb] !z-10",
-          !customData.modoRelacion && "!opacity-0 pointer-events-none"
-        )}
-      />
-      <Handle
-        id="right"
-        type="source"
-        position={Position.Right}
-        isConnectable={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableStart={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableEnd={false}
-        className={cn(
-          "!size-2.5 !border-0 !bg-[#91bcfb] !z-10",
-          !customData.modoRelacion && "!opacity-0 pointer-events-none"
-        )}
-      />
-      <Handle
-        id="bottom"
-        type="source"
-        position={Position.Bottom}
-        isConnectable={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableStart={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableEnd={false}
-        className={cn(
-          "!size-2.5 !border-0 !bg-[#91bcfb] !z-10",
-          !customData.modoRelacion && "!opacity-0 pointer-events-none"
-        )}
-      />
-      <Handle
-        id="left"
-        type="source"
-        position={Position.Left}
-        isConnectable={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableStart={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableEnd={false}
-        className={cn(
-          "!size-2.5 !border-0 !bg-[#91bcfb] !z-10",
-          !customData.modoRelacion && "!opacity-0 pointer-events-none"
-        )}
-      />
-      <Handle
-        id="top-target"
-        type="target"
-        position={Position.Top}
-        isConnectable={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableStart={false}
-        isConnectableEnd={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        className={cn(
-          "!size-2.5 !border-0 !bg-transparent !z-0",
-          !customData.modoRelacion && "!opacity-0 pointer-events-none"
-        )}
-      />
-      <Handle
-        id="right-target"
-        type="target"
-        position={Position.Right}
-        isConnectable={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableStart={false}
-        isConnectableEnd={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        className={cn(
-          "!size-2.5 !border-0 !bg-transparent !z-0",
-          !customData.modoRelacion && "!opacity-0 pointer-events-none"
-        )}
-      />
-      <Handle
-        id="bottom-target"
-        type="target"
-        position={Position.Bottom}
-        isConnectable={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableStart={false}
-        isConnectableEnd={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        className={cn(
-          "!size-2.5 !border-0 !bg-transparent !z-0",
-          !customData.modoRelacion && "!opacity-0 pointer-events-none"
-        )}
-      />
-      <Handle
-        id="left-target"
-        type="target"
-        position={Position.Left}
-        isConnectable={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        isConnectableStart={false}
-        isConnectableEnd={puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
-        className={cn(
-          "!size-2.5 !border-0 !bg-transparent !z-0",
-          !customData.modoRelacion && "!opacity-0 pointer-events-none"
-        )}
-      />
+      {/* Handles de Conexión Multi-Punto (12 posiciones por nodo) */}
+      {[
+        // TOP
+        { id: "top-left", position: Position.Top, style: { left: "25%" } },
+        { id: "top-center", position: Position.Top, style: { left: "50%" } },
+        { id: "top-right", position: Position.Top, style: { left: "75%" } },
+        { id: "top", position: Position.Top, style: { left: "50%" } },
+        // RIGHT
+        { id: "right-top", position: Position.Right, style: { top: "25%" } },
+        { id: "right-center", position: Position.Right, style: { top: "50%" } },
+        { id: "right-bottom", position: Position.Right, style: { top: "75%" } },
+        { id: "right", position: Position.Right, style: { top: "50%" } },
+        // BOTTOM
+        { id: "bottom-left", position: Position.Bottom, style: { left: "25%" } },
+        { id: "bottom-center", position: Position.Bottom, style: { left: "50%" } },
+        { id: "bottom-right", position: Position.Bottom, style: { left: "75%" } },
+        { id: "bottom", position: Position.Bottom, style: { left: "50%" } },
+        // LEFT
+        { id: "left-top", position: Position.Left, style: { top: "25%" } },
+        { id: "left-center", position: Position.Left, style: { top: "50%" } },
+        { id: "left-bottom", position: Position.Left, style: { top: "75%" } },
+        { id: "left", position: Position.Left, style: { top: "50%" } },
+      ].map((h) => {
+        const estaOcupado = Boolean(customData.handlesOcupados?.has(h.id));
+        return (
+          <Handle
+            key={`source-${h.id}`}
+            id={h.id}
+            type="source"
+            position={h.position}
+            style={{
+              ...h.style,
+              width: `${TAMANO_HITBOX_HANDLE}px`,
+              height: `${TAMANO_HITBOX_HANDLE}px`,
+            }}
+            isConnectable={!estaOcupado && puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
+            isConnectableStart={!estaOcupado && puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
+            isConnectableEnd={false}
+            className={cn(
+              // El contenedor conserva un hitbox cómodo; el pseudo-elemento es
+              // el único punto visible para reducir ruido en el modo Relación.
+              "!size-6 !border-0 !bg-transparent !z-10 after:absolute after:left-1/2 after:top-1/2 after:size-1.5 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:shadow-[0_0_0_1px_rgba(255,255,255,0.95)] after:transition-transform",
+              estaOcupado
+                ? "after:bg-slate-400 after:scale-90 !cursor-not-allowed pointer-events-none"
+                : "after:bg-[#91bcfb] hover:after:scale-125 !cursor-crosshair",
+              (IDS_HANDLES_LEGACY.has(h.id) || !customData.modoRelacion) &&
+                "!opacity-0 pointer-events-none"
+            )}
+          />
+        );
+      })}
+      {[
+        // TOP
+        { id: "top-left", position: Position.Top, style: { left: "25%" } },
+        { id: "top-center", position: Position.Top, style: { left: "50%" } },
+        { id: "top-right", position: Position.Top, style: { left: "75%" } },
+        { id: "top", position: Position.Top, style: { left: "50%" } },
+        // RIGHT
+        { id: "right-top", position: Position.Right, style: { top: "25%" } },
+        { id: "right-center", position: Position.Right, style: { top: "50%" } },
+        { id: "right-bottom", position: Position.Right, style: { top: "75%" } },
+        { id: "right", position: Position.Right, style: { top: "50%" } },
+        // BOTTOM
+        { id: "bottom-left", position: Position.Bottom, style: { left: "25%" } },
+        { id: "bottom-center", position: Position.Bottom, style: { left: "50%" } },
+        { id: "bottom-right", position: Position.Bottom, style: { left: "75%" } },
+        { id: "bottom", position: Position.Bottom, style: { left: "50%" } },
+        // LEFT
+        { id: "left-top", position: Position.Left, style: { top: "25%" } },
+        { id: "left-center", position: Position.Left, style: { top: "50%" } },
+        { id: "left-bottom", position: Position.Left, style: { top: "75%" } },
+        { id: "left", position: Position.Left, style: { top: "50%" } },
+      ].map((h) => {
+        const estaOcupado = Boolean(customData.handlesOcupados?.has(h.id));
+        return (
+          <Handle
+            key={`target-${h.id}`}
+            id={`${h.id}-target`}
+            type="target"
+            position={h.position}
+            style={{
+              ...h.style,
+              width: `${TAMANO_HITBOX_HANDLE}px`,
+              height: `${TAMANO_HITBOX_HANDLE}px`,
+            }}
+            isConnectable={!estaOcupado && puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
+            isConnectableStart={false}
+            isConnectableEnd={!estaOcupado && puedeEditar && !bloqueadaPorOtro && Boolean(customData.modoRelacion)}
+            className={cn(
+              // Los targets mantienen la misma superficie de interacción sin
+              // añadir un segundo punto visual sobre el source correspondiente.
+              "!size-6 !border-0 !bg-transparent !z-0",
+              estaOcupado && "!cursor-not-allowed pointer-events-none",
+              (IDS_HANDLES_LEGACY.has(h.id) || !customData.modoRelacion) &&
+                "!opacity-0 pointer-events-none"
+            )}
+          />
+        );
+      })}
 
       {/* Controles de resize interactivos visuales cuando la clase está seleccionada */}
       <NodeResizer

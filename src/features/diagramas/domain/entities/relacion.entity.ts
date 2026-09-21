@@ -10,7 +10,24 @@ export type TipoRelacion =
   | "realizacion"
   | "herencia";
 
-export type ConectorRelacion = "top" | "right" | "bottom" | "left";
+/** Los cuatro valores simples se conservan para relaciones históricas. */
+export type ConectorRelacion =
+  | "top"
+  | "right"
+  | "bottom"
+  | "left"
+  | "top-left"
+  | "top-center"
+  | "top-right"
+  | "right-top"
+  | "right-center"
+  | "right-bottom"
+  | "bottom-left"
+  | "bottom-center"
+  | "bottom-right"
+  | "left-top"
+  | "left-center"
+  | "left-bottom";
 
 export interface Relacion {
   id: string;

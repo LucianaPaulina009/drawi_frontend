@@ -419,14 +419,20 @@ export function reducirOperacion(
     case "ELIMINAR_RELACION": {
       const idRelacion = p.idRelacion ?? p.id_relacion ?? p.relacionId;
       const relEliminada = relaciones.find((r) => r.id === idRelacion);
-      if (relEliminada && relEliminada.referenciasFk) {
+      if (relEliminada && relEliminada.referenciasFk && relEliminada.referenciasFk.length > 0) {
         const idsAtributosFk = relEliminada.referenciasFk.map((rf) => rf.idAtributoFk);
-        clases = clases.map((c) => ({
-          ...c,
-          atributos: c.atributos.filter(
+        clases = clases.map((c) => {
+          const atributosFiltrados = c.atributos.filter(
             (a) => !idsAtributosFk.includes(a.id) || a.procedencia !== "sistema_fk"
-          ),
-        }));
+          );
+          return {
+            ...c,
+            atributos: atributosFiltrados.map((a, idx) => ({
+              ...a,
+              ordenDePosicion: idx + 1,
+            })),
+          };
+        });
       }
       relaciones = relaciones.filter((r) => r.id !== idRelacion);
       // Cascada NM: si la relación eliminada formaba parte de una estructura N:M, eliminar la estructura y la clase intermedia

@@ -2,7 +2,13 @@ import { z } from "zod";
 import { AccionReferencialSchema, AtributoFkNuevoInputSchema, ReferenciaFkReadResponseSchema } from "./referencia-fk.schemas";
 
 export const TipoRelacionSchema = z.enum(["asociacion", "asociacion_dirigida", "agregacion", "composicion", "dependencia", "realizacion", "herencia"]);
-export const ConectorRelacionSchema = z.enum(["top", "right", "bottom", "left"]);
+export const ConectorRelacionSchema = z.enum([
+  "top", "right", "bottom", "left",
+  "top-left", "top-center", "top-right",
+  "right-top", "right-center", "right-bottom",
+  "bottom-left", "bottom-center", "bottom-right",
+  "left-top", "left-center", "left-bottom",
+]);
 export const CardinalidadSchema = z.string().trim().regex(/^(\*|\d+|\d+\.\.(\d+|\*))$/, "Cardinalidad inválida.");
 
 export const MaterializacionFkInputSchema = z.object({

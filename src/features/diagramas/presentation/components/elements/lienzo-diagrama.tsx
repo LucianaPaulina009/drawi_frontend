@@ -49,6 +49,14 @@ const AREA_TRABAJO_EXTENT: CoordinateExtent = [
 const CURSOR_BORRADOR_SVG = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M7 21L2.7 16.7C1.7 15.7 1.7 14.2 2.7 13.3L12.3 3.7C13.3 2.7 14.8 2.7 15.7 3.7L21.3 9.3C22.3 10.3 22.3 11.8 21.3 12.7L13 21H7Z' fill='%2391bcfb' stroke='%23003c70' stroke-width='1.75' stroke-linejoin='round'/%3E%3Cpath d='M5 11L14 20L19 15L10 6L5 11Z' fill='%23ffffff' stroke='%23003c70' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M22 21H7' stroke='%23003c70' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E`;
 const CURSOR_BORRADOR = `url("${CURSOR_BORRADOR_SVG}") 4 20, crosshair`;
 
+function normalizarHandleRelacion(handle: string | null | undefined): string | null {
+  if (!handle) return null;
+  const sinSufijoTarget = handle.replace("-target", "");
+  return ["top", "right", "bottom", "left"].includes(sinSufijoTarget)
+    ? `${sinSufijoTarget}-center`
+    : sinSufijoTarget;
+}
+
 export interface LienzoDiagramaProps {
   idDiagramaActivo: string | null;
   diagramaActivo: DiagramaDetalle | null;
@@ -146,6 +154,28 @@ export const LienzoDiagrama = memo(function LienzoDiagrama({
   const ultimoEnvioCursorRef = useRef(0);
   const ultimoEnvioDragRef = useRef(0);
 
+  // Calcula qué handles de cada clase ya están ocupados por relaciones existentes
+  const handlesOcupadosPorClase = useMemo(() => {
+    const mapa = new Map<string, Set<string>>();
+    for (const relacion of relaciones) {
+      const handleOrigen = normalizarHandleRelacion(relacion.conectorOrigen);
+      const handleDestino = normalizarHandleRelacion(relacion.conectorDestino);
+      if (handleOrigen) {
+        if (!mapa.has(relacion.idClaseOrigen)) {
+          mapa.set(relacion.idClaseOrigen, new Set<string>());
+        }
+        mapa.get(relacion.idClaseOrigen)!.add(handleOrigen);
+      }
+      if (handleDestino) {
+        if (!mapa.has(relacion.idClaseDestino)) {
+          mapa.set(relacion.idClaseDestino, new Set<string>());
+        }
+        mapa.get(relacion.idClaseDestino)!.add(handleDestino);
+      }
+    }
+    return mapa;
+  }, [relaciones]);
+
   // React Flow recibe una proyección pura de Zustand y estado efímero de colaboración.
   const nodes = useMemo<Node[]>(
     () =>
@@ -157,11 +187,13 @@ export const LienzoDiagrama = memo(function LienzoDiagrama({
         miUsuarioId
       ).map((node) => {
         const clase = node.data.clase as Clase;
+        const handlesOcupados = handlesOcupadosPorClase.get(clase.id);
         return {
           ...node,
           data: {
             ...node.data,
             clase,
+            handlesOcupados,
             puedeEditar,
             onSeleccionarClase,
             onAbrirPropiedadesClase,
@@ -182,6 +214,7 @@ export const LienzoDiagrama = memo(function LienzoDiagrama({
       dragPreviews,
       bloqueosClases,
       miUsuarioId,
+      handlesOcupadosPorClase,
       puedeEditar,
       herramientaActiva,
       onSeleccionarClase,
@@ -228,6 +261,36 @@ export const LienzoDiagrama = memo(function LienzoDiagrama({
       herramientaActiva,
       puedeEditar,
     ]
+  );
+
+  const esConexionValida = useCallback(
+    (conexion: Connection | Edge) => {
+      if (!conexion.source || !conexion.target) return false;
+      const sourceHandle = normalizarHandleRelacion(conexion.sourceHandle);
+      const targetHandle = normalizarHandleRelacion(conexion.targetHandle);
+      if (!sourceHandle || !targetHandle) return false;
+
+      // Un punto físico no puede ser origen o destino de más de una relación.
+      // Los conectores legacy se comparan con su centro canónico.
+      const ocupaciones = new Set<string>();
+      for (const relacion of relaciones) {
+        ocupaciones.add(
+          `${relacion.idClaseOrigen}:${normalizarHandleRelacion(relacion.conectorOrigen)}`
+        );
+        ocupaciones.add(
+          `${relacion.idClaseDestino}:${normalizarHandleRelacion(relacion.conectorDestino)}`
+        );
+      }
+
+      const extremoOrigen = `${conexion.source}:${sourceHandle}`;
+      const extremoDestino = `${conexion.target}:${targetHandle}`;
+      return (
+        extremoOrigen !== extremoDestino &&
+        !ocupaciones.has(extremoOrigen) &&
+        !ocupaciones.has(extremoDestino)
+      );
+    },
+    [relaciones]
   );
 
   // Pan habilitado con botón izquierdo (0) y central (1) si está en Mano o Espacio;
@@ -467,6 +530,7 @@ export const LienzoDiagrama = memo(function LienzoDiagrama({
         zoomOnDoubleClick={false}
         nodesDraggable={puedeEditar && herramientaActiva === "seleccion" && !espacioPresionado}
         nodesConnectable={puedeEditar && herramientaActiva === "relacion"}
+        isValidConnection={esConexionValida}
         elementsSelectable={true}
         onNodesChange={handleNodesChange}
         onMouseMove={handleMouseMove}

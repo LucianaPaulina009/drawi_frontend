@@ -1120,10 +1120,10 @@ export function EditorProyecto({
       }
 
       const conectorOrigen =
-        (conectorOrigenRaw?.replace("-target", "") as ConectorRelacion) || "right";
+        (conectorOrigenRaw?.replace("-target", "") as ConectorRelacion) || "right-center";
       const conectorDestino =
         (conectorDestinoRaw?.replace("-target", "") as ConectorRelacion) ||
-        "left";
+        "left-center";
 
       const tipo = tipoRelacionPendiente || "asociacion";
       const [cardinalidadOrigen, cardinalidadDestino] = cardinalidadesPendientes;

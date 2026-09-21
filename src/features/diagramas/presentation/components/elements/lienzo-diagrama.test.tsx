@@ -56,8 +56,8 @@ describe("LienzoDiagrama y EstructuraRelacionNm", () => {
       type: "estructuraNmUml",
       source: "a",
       target: "b",
-      sourceHandle: "right",
-      targetHandle: "left-target",
+      sourceHandle: "right-center",
+      targetHandle: "left-center-target",
       data: {
         estructuraNm: { id: "nm" },
         claseIntermedia: { id: "intermedia" },

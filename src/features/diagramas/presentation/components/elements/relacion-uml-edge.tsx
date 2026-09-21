@@ -19,7 +19,7 @@ import {
 } from "@xyflow/react";
 import type { Clase } from "../../../domain/entities/clase.entity";
 import type { EstructuraRelacionNm } from "../../../domain/entities/estructura-relacion-nm.entity";
-import type { Relacion } from "../../../domain/entities/relacion.entity";
+import type { Relacion, TipoRelacion } from "../../../domain/entities/relacion.entity";
 
 export type RelacionUmlEdgeData = {
   relacion: Relacion;
@@ -29,6 +29,8 @@ export type RelacionUmlEdgeData = {
   onRenombrarInline?: (idRelacion: string, nuevoNombre: string) => void;
   herramientaActiva?: string;
   puedeEditar?: boolean;
+  desplazamientoCarril?: number;
+  desplazamientoLabel?: number;
 };
 
 export type EstructuraNmUmlEdgeData = RelacionUmlEdgeData & {
@@ -36,37 +38,14 @@ export type EstructuraNmUmlEdgeData = RelacionUmlEdgeData & {
   claseIntermedia: Clase;
 };
 
-function getLabelCoordinates(
-  x: number,
-  y: number,
-  position?: Position
-): { x: number; y: number } {
-  const offset = 24;
-  switch (position) {
-    case Position.Right:
-      return { x: x + offset, y: y - 12 };
-    case Position.Left:
-      return { x: x - offset, y: y - 12 };
-    case Position.Top:
-      return { x: x, y: y - offset };
-    case Position.Bottom:
-      return { x: x, y: y + offset };
-    default:
-      return { x, y };
-  }
-}
-
-/**
- * Los handles de React Flow se ubican ligeramente fuera del borde visual del
- * nodo. Al internar el inicio y final del edge, el SVG queda cubierto por el
- * nodo hasta su borde y evita el espacio blanco perceptible en la línea N:M.
- */
 function internarExtremoEnNodo(
   x: number,
   y: number,
   position: Position | undefined,
-  distancia = 6
+  tieneMarcador = false,
+  distancia = 4
 ): { x: number; y: number } {
+  if (tieneMarcador) return { x, y };
   switch (position) {
     case Position.Right:
       return { x: x - distancia, y };
@@ -80,6 +59,129 @@ function internarExtremoEnNodo(
       return { x, y };
   }
 }
+
+function getLabelCoordinates(
+  x: number,
+  y: number,
+  position?: Position,
+  desplazamiento = 0,
+  juntoAMarcador = false
+): { x: number; y: number } {
+  const offset = juntoAMarcador ? 34 : 26;
+  switch (position) {
+    case Position.Right:
+      return { x: x + offset, y: y + desplazamiento };
+    case Position.Left:
+      return { x: x - offset, y: y - desplazamiento };
+    case Position.Top:
+      return { x: x + desplazamiento, y: y - offset };
+    case Position.Bottom:
+      return { x: x - desplazamiento, y: y + offset };
+    default:
+      return { x, y };
+  }
+}
+
+export function obtenerPosicionLabelRelacion(
+  x: number,
+  y: number,
+  _desplazamientoCarril = 0
+): { x: number; y: number } {
+  // Posiciona la etiqueta directamente en la línea (centrada sobre el trazo)
+  return { x, y };
+}
+
+export function obtenerPosicionCardinalidad(
+  x: number,
+  y: number,
+  position: Position | undefined,
+  desplazamientoCarril: number,
+  juntoAMarcador: boolean
+): { x: number; y: number } {
+  return getLabelCoordinates(
+    x,
+    y,
+    position,
+    desplazamientoCarril,
+    juntoAMarcador
+  );
+}
+
+export function debeMostrarCardinalidades(tipo: TipoRelacion): boolean {
+  return (
+    tipo === "asociacion" ||
+    tipo === "asociacion_dirigida" ||
+    tipo === "agregacion" ||
+    tipo === "composicion"
+  );
+}
+
+const NOMBRES_TIPO_RELACION: Record<TipoRelacion, string> = {
+  asociacion: "Asociación",
+  asociacion_dirigida: "Asociación Dirigida",
+  agregacion: "Agregación",
+  composicion: "Composición",
+  dependencia: "Dependencia",
+  realizacion: "Realización",
+  herencia: "Herencia",
+};
+
+export function obtenerNombreVisualTipo(tipo: TipoRelacion): string {
+  return NOMBRES_TIPO_RELACION[tipo] ?? tipo;
+}
+
+export function obtenerMarcadoresRelacion(
+  tipo: TipoRelacion,
+  ids: {
+    flecha: string;
+    triangulo: string;
+    diamanteVacio: string;
+    diamanteLleno: string;
+  }
+): { markerStart?: string; markerEnd?: string } {
+  switch (tipo) {
+    case "asociacion_dirigida":
+    case "dependencia":
+      return { markerEnd: `url(#${ids.flecha})` };
+    case "agregacion":
+      return { markerStart: `url(#${ids.diamanteVacio})` };
+    case "composicion":
+      return { markerStart: `url(#${ids.diamanteLleno})` };
+    case "realizacion":
+    case "herencia":
+      return { markerEnd: `url(#${ids.triangulo})` };
+    default:
+      return {};
+  }
+}
+
+/**
+ * Genera una ruta estrictamente ortogonal con esquinas en ángulo recto (90°)
+ * garantizando que nunca existan líneas inclinadas/diagonales y uniendo
+ * directamente los conectores de origen y destino.
+ */
+export function obtenerRutaOrtogonalConCarril(
+  sourceX: number,
+  sourceY: number,
+  sourcePosition: Position | undefined,
+  targetX: number,
+  targetY: number,
+  targetPosition: Position | undefined,
+  _desplazamientoCarril = 0
+): [string, number, number] {
+  return getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    borderRadius: 0,
+    offset: 20,
+  });
+}
+
+
 
 export function resolverExtremoRamalNm(
   posicionY: number,
@@ -180,44 +282,8 @@ export const RelacionUmlEdge = memo(function RelacionUmlEdge({
   } satisfies Relacion);
 
   const esRecursiva = relacion.idClaseOrigen === relacion.idClaseDestino;
-
-  const [path, labelX, labelY] = useMemo(() => {
-    if (esRecursiva) {
-      return getRectangularLoopPath(
-        sourceX,
-        sourceY,
-        sourcePosition,
-        targetX,
-        targetY,
-        targetPosition
-      );
-    }
-    return getSmoothStepPath({
-      sourceX,
-      sourceY,
-      sourcePosition,
-      targetX,
-      targetY,
-      targetPosition,
-      borderRadius: 0,
-    });
-  }, [
-    esRecursiva,
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  ]);
-
-  const sourceLabelPos = esRecursiva
-    ? { x: sourceX + 28, y: sourceY - 24 }
-    : getLabelCoordinates(sourceX, sourceY, sourcePosition);
-
-  const targetLabelPos = esRecursiva
-    ? { x: targetX + 28, y: targetY + 24 }
-    : getLabelCoordinates(targetX, targetY, targetPosition);
+  const desplazamientoCarril = edgeData?.desplazamientoCarril ?? 0;
+  const desplazamientoLabel = edgeData?.desplazamientoLabel ?? 0;
 
   const seleccionada = Boolean(edgeData?.seleccionada);
   const color = seleccionada ? "#2563eb" : "#475569";
@@ -232,49 +298,90 @@ export const RelacionUmlEdge = memo(function RelacionUmlEdge({
   const markerDiamondHollowId = `marker-diamond-hollow-${id}`;
   const markerDiamondFilledId = `marker-diamond-filled-${id}`;
 
-  let markerStart: string | undefined;
-  let markerEnd: string | undefined;
+  const { markerStart, markerEnd } = obtenerMarcadoresRelacion(
+    relacion.tipoRelacion,
+    {
+      flecha: markerArrowId,
+      triangulo: markerTriangleId,
+      diamanteVacio: markerDiamondHollowId,
+      diamanteLleno: markerDiamondFilledId,
+    }
+  );
 
-  switch (relacion.tipoRelacion) {
-    case "asociacion":
-      break;
-    case "asociacion_dirigida":
-      markerEnd = `url(#${markerArrowId})`;
-      break;
-    case "agregacion":
-      markerStart = `url(#${markerDiamondHollowId})`;
-      break;
-    case "composicion":
-      markerStart = `url(#${markerDiamondFilledId})`;
-      break;
-    case "dependencia":
-      markerEnd = `url(#${markerArrowId})`;
-      break;
-    case "realizacion":
-      markerEnd = `url(#${markerTriangleId})`;
-      break;
-    case "herencia":
-      markerEnd = `url(#${markerTriangleId})`;
-      break;
-  }
+  const [path, labelX, labelY] = useMemo(() => {
+    const src = internarExtremoEnNodo(sourceX, sourceY, sourcePosition, Boolean(markerStart));
+    const tgt = internarExtremoEnNodo(targetX, targetY, targetPosition, Boolean(markerEnd));
+    if (esRecursiva) {
+      return getRectangularLoopPath(
+        src.x,
+        src.y,
+        sourcePosition,
+        tgt.x,
+        tgt.y,
+        targetPosition
+      );
+    }
+    return obtenerRutaOrtogonalConCarril(
+      src.x,
+      src.y,
+      sourcePosition,
+      tgt.x,
+      tgt.y,
+      targetPosition,
+      desplazamientoCarril
+    );
+  }, [
+    desplazamientoCarril,
+    esRecursiva,
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    markerStart,
+    markerEnd,
+  ]);
 
-  const mostrarCardinalidades =
-    relacion.tipoRelacion === "asociacion" ||
-    relacion.tipoRelacion === "asociacion_dirigida" ||
-    relacion.tipoRelacion === "agregacion" ||
-    relacion.tipoRelacion === "composicion";
+  const sourceLabelPos = esRecursiva
+    ? { x: sourceX + 28, y: sourceY - 24 + desplazamientoLabel }
+    : obtenerPosicionCardinalidad(
+        sourceX,
+        sourceY,
+        sourcePosition,
+        desplazamientoLabel,
+        Boolean(markerStart)
+      );
+
+  const targetLabelPos = esRecursiva
+    ? { x: targetX + 28, y: targetY + 24 - desplazamientoLabel }
+    : obtenerPosicionCardinalidad(
+        targetX,
+        targetY,
+        targetPosition,
+        desplazamientoLabel,
+        Boolean(markerEnd)
+      );
+
+  const mostrarCardinalidades = debeMostrarCardinalidades(relacion.tipoRelacion);
 
   const esAsociacion = relacion.tipoRelacion === "asociacion";
+  const nombreVisualTipo = obtenerNombreVisualTipo(relacion.tipoRelacion);
+  const posicionLabel = obtenerPosicionLabelRelacion(
+    labelX,
+    labelY,
+    desplazamientoLabel
+  );
 
   // Estado de edición inline para el nombre de Asociación
   const [editandoNombre, setEditandoNombre] = useState(false);
-  const [nombreBorrador, setNombreBorrador] = useState(relacion.nombre || "Asociación");
+  const [nombreBorrador, setNombreBorrador] = useState(relacion.nombre || nombreVisualTipo);
   const yaConfirmadoRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setNombreBorrador(relacion.nombre || "Asociación");
-  }, [relacion.nombre]);
+    setNombreBorrador(relacion.nombre || nombreVisualTipo);
+  }, [relacion.nombre, nombreVisualTipo]);
 
   useEffect(() => {
     if (editandoNombre) {
@@ -424,54 +531,52 @@ export const RelacionUmlEdge = memo(function RelacionUmlEdge({
         }}
       />
 
-      {/* Nombre editable inline para relación de tipo Asociación */}
-      {esAsociacion && (
-        <EdgeLabelRenderer>
-          <div
-            className="nodrag nopan pointer-events-auto absolute"
-            style={{
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            }}
-          >
-            {editandoNombre ? (
-              <input
-                ref={inputRef}
-                value={nombreBorrador}
-                onChange={(e) => setNombreBorrador(e.target.value)}
-                onBlur={handleConfirmarRenombrado}
-                onKeyDown={handleKeyDown}
-                className="h-6 rounded border border-[#91bcfb] bg-white px-1.5 text-center text-xs font-semibold text-slate-800 shadow-md outline-none ring-2 ring-[#91bcfb]/30"
-                style={{ minWidth: "80px", maxWidth: "180px" }}
-                aria-label="Renombrar relación Asociación"
-              />
-            ) : (
-              <button
-                type="button"
-                className="cursor-pointer rounded border border-slate-200/80 bg-white/95 px-2 py-0.5 text-[10px] font-semibold text-slate-700 shadow-xs backdrop-blur-xs transition-colors hover:border-[#91bcfb] hover:text-[#003c70] focus:outline-none focus:ring-1 focus:ring-[#91bcfb]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  edgeData?.onSeleccionar?.(id);
-                }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  if (edgeData?.puedeEditar) {
-                    setEditandoNombre(true);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (edgeData?.puedeEditar && (e.key === "Enter" || e.key === "F2")) {
-                    e.preventDefault();
-                    setEditandoNombre(true);
-                  }
-                }}
-                title="Doble clic para renombrar Asociación"
-              >
-                {relacion.nombre || "Asociación"}
-              </button>
-            )}
-          </div>
-        </EdgeLabelRenderer>
-      )}
+      {/* Nombre de la relación en la línea (editable si es asociación) */}
+      <EdgeLabelRenderer>
+        <div
+          className="nodrag nopan pointer-events-auto absolute"
+          style={{
+            transform: `translate(-50%, -50%) translate(${posicionLabel.x}px,${posicionLabel.y}px)`,
+          }}
+        >
+          {esAsociacion && editandoNombre ? (
+            <input
+              ref={inputRef}
+              value={nombreBorrador}
+              onChange={(e) => setNombreBorrador(e.target.value)}
+              onBlur={handleConfirmarRenombrado}
+              onKeyDown={handleKeyDown}
+              className="h-6 rounded border border-[#91bcfb] bg-white px-1.5 text-center text-xs font-semibold text-slate-800 shadow-md outline-none ring-2 ring-[#91bcfb]/30"
+              style={{ minWidth: "80px", maxWidth: "180px" }}
+              aria-label="Renombrar relación Asociación"
+            />
+          ) : (
+            <button
+              type="button"
+              className="cursor-pointer rounded border border-slate-200/80 bg-white/95 px-2 py-0.5 text-[10px] font-semibold text-slate-700 shadow-xs backdrop-blur-xs transition-colors hover:border-[#91bcfb] hover:text-[#003c70] focus:outline-none focus:ring-1 focus:ring-[#91bcfb]"
+              onClick={(e) => {
+                e.stopPropagation();
+                edgeData?.onSeleccionar?.(id);
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                if (esAsociacion && edgeData?.puedeEditar) {
+                  setEditandoNombre(true);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (esAsociacion && edgeData?.puedeEditar && (e.key === "Enter" || e.key === "F2")) {
+                  e.preventDefault();
+                  setEditandoNombre(true);
+                }
+              }}
+              title={esAsociacion ? "Doble clic para renombrar Asociación" : nombreVisualTipo}
+            >
+              {relacion.nombre || nombreVisualTipo}
+            </button>
+          )}
+        </div>
+      </EdgeLabelRenderer>
 
       {mostrarCardinalidades && (
         <EdgeLabelRenderer>
@@ -499,9 +604,11 @@ export const RelacionUmlEdge = memo(function RelacionUmlEdge({
 /**
  * Proyección visual única de una estructura N:M persistida. Las dos relaciones
  * 1:N internas siguen existiendo en dominio, pero el lienzo las comunica como
- * una línea principal A–B y un ramal ortogonal hacia la clase intermedia.
+ * una línea de asociación principal A–B y un ramal ortogonal desde el centro
+ * hacia la clase intermedia.
  */
 export const EstructuraNmUmlEdge = memo(function EstructuraNmUmlEdge({
+  id,
   sourceX,
   sourceY,
   targetX,
@@ -514,20 +621,21 @@ export const EstructuraNmUmlEdge = memo(function EstructuraNmUmlEdge({
   const relacion = edgeData?.relacion;
   const claseIntermedia = edgeData?.claseIntermedia;
   const nodoIntermedio = useInternalNode(claseIntermedia?.id ?? "");
+
   const extremoOrigen = internarExtremoEnNodo(sourceX, sourceY, sourcePosition);
   const extremoDestino = internarExtremoEnNodo(targetX, targetY, targetPosition);
 
   const [lineaPrincipal, centroX, centroY] = useMemo(
     () =>
-      getSmoothStepPath({
-        sourceX: extremoOrigen.x,
-        sourceY: extremoOrigen.y,
+      obtenerRutaOrtogonalConCarril(
+        extremoOrigen.x,
+        extremoOrigen.y,
         sourcePosition,
-        targetX: extremoDestino.x,
-        targetY: extremoDestino.y,
+        extremoDestino.x,
+        extremoDestino.y,
         targetPosition,
-        borderRadius: 0,
-      }),
+        edgeData?.desplazamientoCarril ?? 0
+      ),
     [
       extremoDestino.x,
       extremoDestino.y,
@@ -535,61 +643,86 @@ export const EstructuraNmUmlEdge = memo(function EstructuraNmUmlEdge({
       extremoOrigen.y,
       sourcePosition,
       targetPosition,
+      edgeData?.desplazamientoCarril,
     ]
   );
 
   if (!relacion || !claseIntermedia) return null;
 
-  const alturaIntermedia = nodoIntermedio?.measured.height;
+  const alturaIntermedia = nodoIntermedio?.measured?.height ?? 100;
+  const anchoIntermedia =
+    nodoIntermedio?.measured?.width ?? claseIntermedia.ancho ?? 220;
+  const posicionIntermediaX =
+    nodoIntermedio?.internals?.positionAbsolute?.x ?? claseIntermedia.posicionX ?? 0;
   const posicionIntermediaY =
-    nodoIntermedio?.internals.positionAbsolute.y ?? claseIntermedia.posicionY;
-  const extremoIntermedia = alturaIntermedia
-    ? resolverExtremoRamalNm(posicionIntermediaY, alturaIntermedia, centroY)
-    : null;
-  const extremoRamalX = claseIntermedia.posicionX + claseIntermedia.ancho / 2;
-  const quiebreRamalY = extremoIntermedia
-    ? Math.round((centroY + extremoIntermedia.y) / 2)
-    : null;
+    nodoIntermedio?.internals?.positionAbsolute?.y ?? claseIntermedia.posicionY ?? 0;
+
+  const extremoIntermedia = resolverExtremoRamalNm(
+    posicionIntermediaY,
+    alturaIntermedia,
+    centroY
+  );
+  const extremoRamalX = posicionIntermediaX + anchoIntermedia / 2;
+  const quiebreRamalY = Math.round((centroY + extremoIntermedia.y) / 2);
   const ramal =
-    extremoIntermedia && quiebreRamalY !== null
-      ? `M ${centroX} ${centroY} L ${centroX} ${quiebreRamalY} L ${extremoRamalX} ${quiebreRamalY} L ${extremoRamalX} ${extremoIntermedia.y}`
-      : null;
-  const color = edgeData.seleccionada ? "#2563eb" : "#475569";
-  // La estructura persistida contiene dos 1:N internas, pero su proyección
-  // visual es una relación N:M: ambas cardinalidades viven solo en la línea
-  // principal A–B, nunca sobre el ramal de la clase intermedia.
-  const cardinalidadOrigen = getLabelCoordinates(sourceX, sourceY, sourcePosition);
-  const cardinalidadDestino = getLabelCoordinates(targetX, targetY, targetPosition);
+    Math.abs(centroX - extremoRamalX) < 1
+      ? `M ${centroX} ${centroY} L ${extremoRamalX} ${extremoIntermedia.y}`
+      : `M ${centroX} ${centroY} L ${centroX} ${quiebreRamalY} L ${extremoRamalX} ${quiebreRamalY} L ${extremoRamalX} ${extremoIntermedia.y}`;
+
+  const seleccionada = Boolean(edgeData?.seleccionada);
+  const color = seleccionada ? "#2563eb" : "#475569";
+  const desplazamientoLabel = edgeData?.desplazamientoLabel ?? 0;
+
+  // Cardinalidades en los extremos de la línea principal (igual que RelacionUmlEdge)
+  const sourceLabelPos = obtenerPosicionCardinalidad(
+    sourceX,
+    sourceY,
+    sourcePosition,
+    desplazamientoLabel,
+    false
+  );
+  const targetLabelPos = obtenerPosicionCardinalidad(
+    targetX,
+    targetY,
+    targetPosition,
+    desplazamientoLabel,
+    false
+  );
+
+  const cardinalidadOrigen = relacion.cardinalidadOrigen?.trim() || "0..*";
+  const cardinalidadDestino = relacion.cardinalidadDestino?.trim() || "0..*";
 
   const handleSeleccion = (event: ReactMouseEvent<SVGPathElement>) => {
     event.stopPropagation();
-    if (edgeData.herramientaActiva === "borrador" && edgeData.puedeEditar) {
-      edgeData.onEliminar?.(relacion);
+    if (edgeData?.herramientaActiva === "borrador" && edgeData?.puedeEditar) {
+      edgeData?.onEliminar?.(relacion);
       return;
     }
-    edgeData.onSeleccionar?.(relacion.id);
+    edgeData?.onSeleccionar?.(relacion.id);
   };
 
   return (
     <>
+      {/* Línea principal A-B (sólida, con la misma estética de asociación) */}
       <BaseEdge
         path={lineaPrincipal}
         style={{
           stroke: color,
-          strokeWidth: edgeData.seleccionada ? 2.5 : 1.75,
+          strokeWidth: seleccionada ? 2.5 : 1.75,
           pointerEvents: "none",
         }}
       />
-      {ramal && (
-        <BaseEdge
-          path={ramal}
-          style={{
-            stroke: color,
-            strokeWidth: edgeData.seleccionada ? 2.5 : 1.75,
-            pointerEvents: "none",
-          }}
-        />
-      )}
+      {/* Ramal ortogonal hacia la clase intermedia (discontinua según UML) */}
+      <BaseEdge
+        path={ramal}
+        style={{
+          stroke: color,
+          strokeWidth: seleccionada ? 2.5 : 1.75,
+          strokeDasharray: "6 4",
+          pointerEvents: "none",
+        }}
+      />
+      {/* Hitbox ampliada para selección y borrado en la línea principal */}
       <path
         d={lineaPrincipal}
         fill="none"
@@ -598,32 +731,32 @@ export const EstructuraNmUmlEdge = memo(function EstructuraNmUmlEdge({
         className="cursor-pointer"
         onClick={handleSeleccion}
       />
-      {ramal && (
-        <path
-          d={ramal}
-          fill="none"
-          stroke="transparent"
-          strokeWidth={20}
-          className="cursor-pointer"
-          onClick={handleSeleccion}
-        />
-      )}
+      {/* Hitbox ampliada para selección y borrado en el ramal */}
+      <path
+        d={ramal}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={20}
+        className="cursor-pointer"
+        onClick={handleSeleccion}
+      />
+      {/* Cardinalidades en los extremos A y B */}
       <EdgeLabelRenderer>
         <div
           className="pointer-events-none absolute rounded-md border border-slate-200/80 bg-white/95 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 shadow-xs backdrop-blur-xs nodrag nopan"
           style={{
-            transform: `translate(-50%, -50%) translate(${cardinalidadOrigen.x}px,${cardinalidadOrigen.y}px)`,
+            transform: `translate(-50%, -50%) translate(${sourceLabelPos.x}px,${sourceLabelPos.y}px)`,
           }}
         >
-          0..*
+          {cardinalidadOrigen}
         </div>
         <div
           className="pointer-events-none absolute rounded-md border border-slate-200/80 bg-white/95 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 shadow-xs backdrop-blur-xs nodrag nopan"
           style={{
-            transform: `translate(-50%, -50%) translate(${cardinalidadDestino.x}px,${cardinalidadDestino.y}px)`,
+            transform: `translate(-50%, -50%) translate(${targetLabelPos.x}px,${targetLabelPos.y}px)`,
           }}
         >
-          0..*
+          {cardinalidadDestino}
         </div>
       </EdgeLabelRenderer>
     </>
