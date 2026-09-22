@@ -182,4 +182,62 @@ describe("MascotaDrawi", () => {
 
     expect(botonImagen).toHaveClass("scale-105");
   });
+
+  it("no muestra el botón Descartar en reposo y lo muestra debajo del micrófono durante grabación activa", async () => {
+    const onGrabarAudio = vi.fn();
+    const onDescartarAudio = vi.fn();
+
+    const { rerender } = render(
+      <MascotaDrawi
+        abierto={false}
+        onToggle={vi.fn()}
+        onGrabarAudio={onGrabarAudio}
+        onDescartarAudio={onDescartarAudio}
+        modoAudioExterno={false}
+      />
+    );
+
+    const botonDrawi = screen.getByRole("button", {
+      name: "Abrir asistente de IA DRAWI",
+    });
+    fireEvent.click(botonDrawi);
+
+    // En reposo: solo se ve el botón de micrófono
+    expect(screen.getByRole("menuitem", { name: "Grabar audio" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Descartar grabación" })).not.toBeInTheDocument();
+
+    // Cuando inicia grabación (modoAudioExterno = true)
+    rerender(
+      <MascotaDrawi
+        abierto={false}
+        onToggle={vi.fn()}
+        onGrabarAudio={onGrabarAudio}
+        onDescartarAudio={onDescartarAudio}
+        modoAudioExterno={true}
+      />
+    );
+
+    const botonDescartar = screen.getByRole("button", { name: "Descartar grabación" });
+    expect(botonDescartar).toBeInTheDocument();
+    expect(botonDescartar).toHaveTextContent("Descartar");
+
+    // Al hacer clic en Descartar, se dispara onDescartarAudio
+    fireEvent.click(botonDescartar);
+    expect(onDescartarAudio).toHaveBeenCalledTimes(1);
+
+    // Al volver a idle, el botón Descartar desaparece
+    rerender(
+      <MascotaDrawi
+        abierto={false}
+        onToggle={vi.fn()}
+        onGrabarAudio={onGrabarAudio}
+        onDescartarAudio={onDescartarAudio}
+        modoAudioExterno={false}
+      />
+    );
+    await waitForElementToBeRemoved(() =>
+      screen.queryByRole("button", { name: "Descartar grabación" })
+    );
+    expect(screen.queryByRole("button", { name: "Descartar grabación" })).not.toBeInTheDocument();
+  });
 });

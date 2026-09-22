@@ -34,13 +34,12 @@ describe("PanelChatDrawi", () => {
     overrides?: Partial<GrabacionAudioResult>
   ): GrabacionAudioResult => ({
     estado: "inactivo",
-    audioUrl: null,
     error: null,
     duracionSegundos: 0,
     iniciarGrabacion: vi.fn(async () => true),
     detenerGrabacion: vi.fn(async () => null),
+    descartarGrabacion: vi.fn(),
     cancelarGrabacion: vi.fn(),
-    removerAudio: vi.fn(),
     limpiarRecursos: vi.fn(),
     ...overrides,
   });
@@ -53,6 +52,7 @@ describe("PanelChatDrawi", () => {
     enviando: false,
     error: null,
     enviarMensaje: vi.fn(async () => true),
+    enviarAudio: vi.fn(async () => true),
     cargarHistorial: vi.fn(async () => {}),
     limpiarError: vi.fn(),
     ...overrides,
@@ -241,4 +241,81 @@ describe("PanelChatDrawi", () => {
     fireEvent.click(botonEnviar);
     expect(mockOnEnviarMensaje).not.toHaveBeenCalled();
   });
+
+  it("muestra el botón Descartar junto al micrófono exclusivamente durante grabación activa", () => {
+    const mockOnDescartar = vi.fn();
+    const mockOnAlternar = vi.fn();
+
+    const { rerender } = render(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={createMockAsistente()}
+        grabacion={createMockGrabacion({ estado: "inactivo" })}
+        estadoVoz="idle"
+        onAlternarGrabacion={mockOnAlternar}
+        onDescartarGrabacion={mockOnDescartar}
+      />
+    );
+
+    // En idle: el botón Descartar NO debe existir
+    expect(screen.queryByRole("button", { name: "Descartar grabación" })).not.toBeInTheDocument();
+
+    // Cambiar a estado grabando
+    rerender(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={createMockAsistente()}
+        grabacion={createMockGrabacion({ estado: "grabando" })}
+        estadoVoz="grabando"
+        onAlternarGrabacion={mockOnAlternar}
+        onDescartarGrabacion={mockOnDescartar}
+      />
+    );
+
+    // En grabación activa: el botón Descartar DEBE aparecer junto al micrófono
+    const botonDescartar = screen.getByRole("button", { name: "Descartar grabación" });
+    expect(botonDescartar).toBeInTheDocument();
+    expect(botonDescartar).toHaveTextContent("Descartar");
+
+    // Al hacer clic en Descartar, se ejecuta onDescartarGrabacion
+    fireEvent.click(botonDescartar);
+    expect(mockOnDescartar).toHaveBeenCalledTimes(1);
+
+    // El botón del micrófono tiene estado de detener/enviar en grabación activa
+    const botonMic = screen.getByRole("button", { name: "Detener y enviar grabación" });
+    expect(botonMic).toBeInTheDocument();
+    fireEvent.click(botonMic);
+    expect(mockOnAlternar).toHaveBeenCalledTimes(1);
+
+    // En estado transcribiendo: el botón Descartar NO debe aparecer
+    rerender(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={createMockAsistente()}
+        grabacion={createMockGrabacion({ estado: "inactivo" })}
+        estadoVoz="transcribiendo"
+        onAlternarGrabacion={mockOnAlternar}
+        onDescartarGrabacion={mockOnDescartar}
+      />
+    );
+    expect(screen.queryByRole("button", { name: "Descartar grabación" })).not.toBeInTheDocument();
+
+    // En estado procesando: el botón Descartar NO debe aparecer
+    rerender(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={createMockAsistente()}
+        grabacion={createMockGrabacion({ estado: "inactivo" })}
+        estadoVoz="procesando"
+        onAlternarGrabacion={mockOnAlternar}
+        onDescartarGrabacion={mockOnDescartar}
+      />
+    );
+    expect(screen.queryByRole("button", { name: "Descartar grabación" })).not.toBeInTheDocument();
+  });
 });
+

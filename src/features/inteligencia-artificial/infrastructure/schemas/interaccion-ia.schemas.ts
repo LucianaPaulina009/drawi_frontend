@@ -86,6 +86,7 @@ export type ListaInteraccionesIaResponse = z.infer<
 export const EnviarMensajeIaRequestSchema = z.object({
   texto: z.string().min(1, "El mensaje no puede estar vacío").max(4000),
   claveIdempotencia: z.string().min(1, "Clave de idempotencia inválida"),
+  tipoInteraccion: z.string().optional(),
 });
 
 export type EnviarMensajeIaRequest = z.infer<typeof EnviarMensajeIaRequestSchema>;

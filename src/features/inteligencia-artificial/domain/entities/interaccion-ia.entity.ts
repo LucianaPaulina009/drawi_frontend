@@ -37,4 +37,5 @@ export interface ListaInteraccionesIa {
 export interface EnviarMensajeIaData {
   texto: string;
   claveIdempotencia: string;
+  tipoInteraccion?: string;
 }

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { motion, useSpring, AnimatePresence } from "motion/react";
-import { Mic, Image as ImageIcon, MessageSquare, Camera, Code2 } from "lucide-react";
+import { Mic, Image as ImageIcon, MessageSquare, Camera, Code2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ActionOption {
@@ -50,6 +50,7 @@ export interface MascotaDrawiProps {
   onAbrirChat?: () => void;
   onSubirImagen?: () => void;
   onGrabarAudio?: () => void;
+  onDescartarAudio?: () => void;
   onGenerarBackend?: () => void;
   modoAudioExterno?: boolean;
   modoImagenExterno?: boolean;
@@ -62,6 +63,7 @@ export function MascotaDrawi({
   onAbrirChat,
   onSubirImagen,
   onGrabarAudio,
+  onDescartarAudio,
   onGenerarBackend,
   modoAudioExterno = false,
   modoImagenExterno = false,
@@ -78,7 +80,9 @@ export function MascotaDrawi({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Modo activo efectivo (derivado de props o estado interno)
-  const activeMode = modoAudioExterno ? "audio" : modoImagenExterno ? "image" : mode;
+  const isAudioActive = onGrabarAudio ? Boolean(modoAudioExterno) : (modoAudioExterno || mode === "audio");
+  const isImageActive = onSubirImagen ? Boolean(modoImagenExterno) : (modoImagenExterno || mode === "image");
+  const activeMode = isAudioActive ? "audio" : isImageActive ? "image" : "idle";
 
   // Gaze tracking springs: (0, 0) = mirando al frente
   const lookX = useSpring(-0.55, { stiffness: 240, damping: 22 });
@@ -217,8 +221,9 @@ export function MascotaDrawi({
     } else if (id === "audio") {
       if (onGrabarAudio) {
         onGrabarAudio();
+      } else {
+        setMode((prev) => (prev === "audio" ? "idle" : "audio"));
       }
-      setMode((prev) => (prev === "audio" ? "idle" : "audio"));
       setActiveActionToast(activeMode === "audio" ? "Grabación finalizada" : "Escuchando audio...");
       setTimeout(() => setActiveActionToast(null), 2000);
     } else if (id === "image") {
@@ -226,6 +231,14 @@ export function MascotaDrawi({
         onSubirImagen();
       }
       setMode("idle");
+    }
+  };
+
+  const handleDescartarAudio = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMode("idle");
+    if (onDescartarAudio) {
+      onDescartarAudio();
     }
   };
 
@@ -465,6 +478,45 @@ export function MascotaDrawi({
                         <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-rose-400 rounded-full border border-white shadow-xs" />
                       )}
                     </motion.button>
+
+                    {/* Botón Descartar situado justo debajo del micrófono en el grupo radial con tono pastel */}
+                    <AnimatePresence>
+                      {btn.id === "audio" && isActive && (
+                        <motion.button
+                          type="button"
+                          role="button"
+                          aria-label="Descartar grabación"
+                          title="Descartar grabación de audio"
+                          tabIndex={isMenuOpen ? 0 : -1}
+                          onClick={handleDescartarAudio}
+                          initial={{ opacity: 0, y: -6, scale: 0.8 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -4, scale: 0.8 }}
+                          transition={{ duration: 0.15 }}
+                          whileHover={{ scale: 1.08 }}
+                          whileTap={{ scale: 0.92 }}
+                          className={cn(
+                            "absolute top-[52px] left-1/2 -translate-x-1/2 whitespace-nowrap z-40",
+                            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full",
+                            "text-rose-700 hover:text-rose-800 active:text-rose-900",
+                            "text-[11px] font-semibold tracking-wide",
+                            "border border-white/90 cursor-pointer select-none pointer-events-auto",
+                            "transition-all duration-150 backdrop-blur-md",
+                            "focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+                          )}
+                          style={{
+                            backgroundColor: "#fecdd3",
+                            backgroundImage:
+                              "linear-gradient(145deg, #fff1f2 0%, #fecdd3 45%, #fda4af 100%)",
+                            boxShadow:
+                              "inset 0 1.5px 3px rgba(255, 255, 255, 0.85), inset 0 -1.5px 3px rgba(244, 63, 94, 0.18), 0 4px 12px rgba(251, 113, 133, 0.28)",
+                          }}
+                        >
+                          <Trash2 className="w-3 h-3 text-rose-600 drop-shadow-2xs" />
+                          <span>Descartar</span>
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
                   </motion.div>
                 );
               })}

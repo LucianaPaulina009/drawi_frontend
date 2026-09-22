@@ -6,6 +6,7 @@ import { interaccionIaRepositoryImpl } from "./interaccion-ia.repository";
 
 vi.mock("@/features/shared/infrastructure/http/api-client", () => ({
   apiRequestData: vi.fn(),
+  apiRequestFormData: vi.fn(),
 }));
 
 describe("interaccionIaRepositoryImpl", () => {
@@ -94,6 +95,44 @@ describe("interaccionIaRepositoryImpl", () => {
           texto: "Crea una clase Usuario",
           claveIdempotencia: "88888888-8888-8888-8888-888888888888",
         },
+      })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("enviarAudio invoca apiRequestFormData con POST y endpoint /interacciones-ia/audio", async () => {
+    const mockResponse = {
+      ok: true as const,
+      data: {
+        id: "77777777-7777-7777-7777-777777777777",
+        idDiagrama: "11111111-1111-1111-1111-111111111111",
+        idUsuario: "user-1",
+        tipo: "VOZ_AUDIO",
+        estado: "COMPLETADO",
+        entradaUsuario: "Crea una clase Factura",
+        respuestaIa: "Clase Factura creada exitosamente.",
+        claveIdempotencia: "key-voice-1",
+        creadoEn: "2026-09-20T12:00:00Z",
+      },
+    };
+
+    vi.mocked(apiClient.apiRequestFormData).mockResolvedValue(mockResponse as never);
+
+    const blob = new Blob(["audio-bytes"], { type: "audio/webm" });
+    const result = await interaccionIaRepositoryImpl.enviarAudio(
+      "11111111-1111-1111-1111-111111111111",
+      blob,
+      "key-voice-1",
+      "audio/webm",
+      4.2
+    );
+
+    expect(apiClient.apiRequestFormData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: expect.stringContaining(
+          "/diagramas/11111111-1111-1111-1111-111111111111/interacciones-ia/audio"
+        ),
+        method: "POST",
       })
     );
     expect(result.ok).toBe(true);

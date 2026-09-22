@@ -10,6 +10,7 @@ import {
   Mic,
   Paperclip,
   Sparkles,
+  Trash2,
   User,
   X,
 } from "lucide-react";
@@ -18,7 +19,7 @@ import type { GrabacionAudioResult } from "../../hooks/use-grabacion-audio";
 import type { useAsistenteIa } from "../../hooks/use-asistente-ia";
 import type { useHistorialInteraccionesIa } from "../../hooks/use-historial-interacciones-ia";
 import { AdjuntoImagenDrawi } from "./adjunto-imagen-drawi";
-import { ControlAudioDrawi } from "./control-audio-drawi";
+import { ControlAudioDrawi, type EstadoVoz } from "./control-audio-drawi";
 
 export interface PanelChatDrawiProps {
   abierto: boolean;
@@ -26,6 +27,11 @@ export interface PanelChatDrawiProps {
   asistente: ReturnType<typeof useAsistenteIa>;
   grabacion: GrabacionAudioResult;
   historialIa?: ReturnType<typeof useHistorialInteraccionesIa>;
+  estadoVoz?: EstadoVoz;
+  errorVoz?: string | null;
+  deshabilitadoVoz?: boolean;
+  onAlternarGrabacion?: () => void;
+  onDescartarGrabacion?: () => void;
   onEnviarMensaje?: (texto: string) => Promise<boolean>;
 }
 
@@ -35,6 +41,11 @@ export function PanelChatDrawi({
   asistente,
   grabacion,
   historialIa,
+  estadoVoz = "idle",
+  errorVoz,
+  deshabilitadoVoz,
+  onAlternarGrabacion,
+  onDescartarGrabacion,
   onEnviarMensaje,
 }: PanelChatDrawiProps) {
   const {
@@ -54,6 +65,37 @@ export function PanelChatDrawi({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const inputTextoRef = useRef<HTMLInputElement | null>(null);
+
+  const estaGrabando = estadoVoz === "grabando" || grabacion.estado === "grabando";
+  const estaSolicitando = estadoVoz === "solicitando" || grabacion.estado === "solicitando";
+  const estaTranscribiendo = estadoVoz === "transcribiendo";
+  const estaProcesando = estadoVoz === "procesando";
+
+  const vozBloqueada =
+    estaGrabando ||
+    estaSolicitando ||
+    estaTranscribiendo ||
+    estaProcesando;
+  const interaccionEnCurso = Boolean(historialIa?.enviando || vozBloqueada);
+  const deshabilitadoMic = Boolean(deshabilitadoVoz || interaccionEnCurso);
+
+  const handleAlternarGrabacionLocal = () => {
+    if (onAlternarGrabacion) {
+      onAlternarGrabacion();
+    } else if (estaGrabando) {
+      grabacion.detenerGrabacion();
+    } else {
+      grabacion.iniciarGrabacion();
+    }
+  };
+
+  const handleDescartarGrabacionLocal = () => {
+    if (onDescartarGrabacion) {
+      onDescartarGrabacion();
+    } else {
+      grabacion.descartarGrabacion();
+    }
+  };
 
   const interacciones = historialIa ? historialIa.interacciones : [];
   const cantidadMensajes = historialIa
@@ -83,7 +125,7 @@ export function PanelChatDrawi({
       e.preventDefault();
     }
     const texto = textoEdicion.trim();
-    if (!texto || historialIa?.enviando) return;
+    if (!texto || interaccionEnCurso) return;
 
     setTextoEdicion("");
 
@@ -112,7 +154,8 @@ export function PanelChatDrawi({
     e.target.value = "";
   };
 
-  const errorVisible = historialIa?.error || errorLocal;
+  const errorChat = historialIa?.error || errorLocal;
+  const errorVozActivo = errorVoz || grabacion.error;
 
   return (
     <AnimatePresence>
@@ -174,7 +217,7 @@ export function PanelChatDrawi({
             </div>
           </div>
 
-          {/* ── Avisos y Errores ──────────────────────────────────────── */}
+          {/* ── Avisos y Errores de Chat ─────────────────────────────────── */}
           {avisoIndisponibilidad && (
             <div
               role="status"
@@ -194,14 +237,14 @@ export function PanelChatDrawi({
             </div>
           )}
 
-          {errorVisible && (
+          {errorChat && (
             <div
               role="alert"
               className="mx-4 mt-3 flex items-start justify-between rounded-2xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-900 shadow-sm"
             >
               <div className="flex items-start space-x-2">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-red-600" />
-                <p className="text-[11px]">{errorVisible}</p>
+                <p className="text-[11px]">{errorChat}</p>
               </div>
               <button
                 type="button"
@@ -348,8 +391,12 @@ export function PanelChatDrawi({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* ── Adjuntos Activos ──────────────────────────────────────── */}
-          {(imagenTemporal || grabacion.estado !== "inactivo") && (
+          {/* ── Adjuntos Activos / Estados de Voz ─────────────────────────── */}
+          {(imagenTemporal ||
+            estaSolicitando ||
+            estaTranscribiendo ||
+            estaProcesando ||
+            Boolean(errorVozActivo)) && (
             <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/70 space-y-2">
               {imagenTemporal && (
                 <AdjuntoImagenDrawi
@@ -357,7 +404,19 @@ export function PanelChatDrawi({
                   onRemover={removerImagen}
                 />
               )}
-              <ControlAudioDrawi grabacion={grabacion} />
+              {(estaSolicitando ||
+                estaTranscribiendo ||
+                estaProcesando ||
+                Boolean(errorVozActivo)) && (
+                <ControlAudioDrawi
+                  grabacion={grabacion}
+                  estadoVoz={estadoVoz}
+                  errorVoz={errorVoz}
+                  deshabilitado={deshabilitadoMic}
+                  onAlternarGrabacion={onAlternarGrabacion}
+                  onDescartarGrabacion={onDescartarGrabacion}
+                />
+              )}
             </div>
           )}
 
@@ -379,23 +438,46 @@ export function PanelChatDrawi({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
+                disabled={interaccionEnCurso}
                 aria-label="Adjuntar imagen de referencia"
                 title="Adjuntar imagen (JPEG, PNG, WebP)"
-                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer transition-colors"
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
               >
                 <Paperclip className="h-4 w-4" />
               </button>
 
-              {/* Botón de micrófono rápido */}
-              {grabacion.estado === "inactivo" && (
+              {/* Botón de micrófono: 1er clic inicia grabación; 2do clic finaliza, transcribe y envía */}
+              <button
+                type="button"
+                onClick={handleAlternarGrabacionLocal}
+                disabled={deshabilitadoMic && !estaGrabando}
+                aria-label={estaGrabando ? "Detener y enviar grabación" : "Grabar audio"}
+                title={
+                  estaGrabando
+                    ? "Detener y enviar grabación (segundo clic para transcribir y enviar)"
+                    : "Grabar audio"
+                }
+                className={cn(
+                  "rounded-full p-1.5 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 shrink-0",
+                  estaGrabando
+                    ? "bg-red-500 text-white animate-pulse hover:bg-red-600 focus:ring-red-400 shadow-xs"
+                    : "text-slate-400 hover:bg-slate-100 hover:text-sky-600 focus:ring-sky-400 disabled:opacity-40 disabled:cursor-not-allowed"
+                )}
+              >
+                <Mic className="h-4 w-4" />
+              </button>
+
+              {/* Botón pequeño de Descartar JUNTO AL MICRÓFONO - Visible ÚNICAMENTE cuando recording = true */}
+              {estaGrabando && (
                 <button
                   type="button"
-                  onClick={() => grabacion.iniciarGrabacion()}
-                  aria-label="Grabar audio"
-                  title="Grabar audio"
-                  className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer transition-colors"
+                  onClick={handleDescartarGrabacionLocal}
+                  aria-label="Descartar grabación"
+                  title="Descartar grabación"
+                  className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 shadow-2xs transition-all hover:bg-red-100 hover:text-red-700 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-1 cursor-pointer select-none shrink-0"
                 >
-                  <Mic className="h-4 w-4" />
+                  <Trash2 className="h-3 w-3" />
+                  <span>Descartar</span>
                 </button>
               )}
 
@@ -406,26 +488,30 @@ export function PanelChatDrawi({
                 value={textoEdicion}
                 onChange={(e) => setTextoEdicion(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Escribe un mensaje o consulta..."
+                placeholder={
+                  estaGrabando
+                    ? `Grabando audio... (clic en mic para enviar)`
+                    : "Escribe un mensaje o consulta..."
+                }
                 aria-label="Consulta para el asistente IA"
-                disabled={historialIa?.enviando}
-                className="flex-1 bg-transparent text-slate-800 text-xs sm:text-sm placeholder:text-slate-400 focus:outline-none disabled:opacity-50"
+                disabled={interaccionEnCurso}
+                className="flex-1 bg-transparent text-slate-800 text-xs sm:text-sm placeholder:text-slate-400 focus:outline-none disabled:opacity-50 min-w-0"
               />
 
               {/* Botón de Enviar con flecha hacia arriba */}
               <button
                 type="submit"
-                disabled={!textoEdicion.trim() || historialIa?.enviando}
+                disabled={!textoEdicion.trim() || interaccionEnCurso}
                 aria-label="Enviar consulta"
                 title="Enviar"
                 className={cn(
                   "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 shrink-0",
-                  textoEdicion.trim() && !historialIa?.enviando
+                  textoEdicion.trim() && !interaccionEnCurso
                     ? "bg-gradient-to-r from-sky-500 to-sky-600 text-white shadow-sm shadow-sky-500/25 cursor-pointer hover:from-sky-600 hover:to-sky-700 hover:scale-105 active:scale-95"
                     : "bg-slate-100 text-slate-300 cursor-not-allowed"
                 )}
               >
-                {historialIa?.enviando ? (
+                {interaccionEnCurso ? (
                   <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
                 ) : (
                   <ArrowUp className="w-4 h-4 stroke-[2.5]" />

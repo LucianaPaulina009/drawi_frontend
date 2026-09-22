@@ -6,24 +6,27 @@ export type EstadoGrabacionAudio =
   | "inactivo"
   | "solicitando"
   | "grabando"
-  | "listo"
   | "error";
+
+export interface GrabacionAudioMetadata {
+  blob: Blob;
+  duracionSegundos: number;
+  mimeType: string;
+}
 
 export interface GrabacionAudioResult {
   estado: EstadoGrabacionAudio;
-  audioUrl: string | null;
   error: string | null;
   duracionSegundos: number;
   iniciarGrabacion: () => Promise<boolean>;
-  detenerGrabacion: () => Promise<string | null>;
+  detenerGrabacion: () => Promise<GrabacionAudioMetadata | null>;
+  descartarGrabacion: () => void;
   cancelarGrabacion: () => void;
-  removerAudio: () => void;
   limpiarRecursos: () => void;
 }
 
 export function useGrabacionAudio(): GrabacionAudioResult {
   const [estado, setEstado] = useState<EstadoGrabacionAudio>("inactivo");
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [duracionSegundos, setDuracionSegundos] = useState<number>(0);
 
@@ -31,11 +34,7 @@ export function useGrabacionAudio(): GrabacionAudioResult {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    audioUrlRef.current = audioUrl;
-  }, [audioUrl]);
+  const sesionGeneracionRef = useRef<number>(0);
 
   const detenerTimer = useCallback(() => {
     if (timerRef.current) {
@@ -47,19 +46,18 @@ export function useGrabacionAudio(): GrabacionAudioResult {
   const detenerPistasStream = useCallback(() => {
     if (mediaStreamRef.current) {
       for (const track of mediaStreamRef.current.getTracks()) {
-        track.stop();
+        try {
+          track.stop();
+        } catch {
+          // Ignorar error al detener pista
+        }
       }
       mediaStreamRef.current = null;
     }
   }, []);
 
-  const limpiarUrls = useCallback(() => {
-    if (audioUrlRef.current?.startsWith("blob:")) {
-      URL.revokeObjectURL(audioUrlRef.current);
-    }
-  }, []);
-
   const limpiarRecursos = useCallback(() => {
+    sesionGeneracionRef.current += 1;
     detenerTimer();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       try {
@@ -71,24 +69,24 @@ export function useGrabacionAudio(): GrabacionAudioResult {
     mediaRecorderRef.current = null;
     detenerPistasStream();
     audioChunksRef.current = [];
-    limpiarUrls();
-    setAudioUrl(null);
     setEstado("inactivo");
     setError(null);
     setDuracionSegundos(0);
-  }, [detenerTimer, detenerPistasStream, limpiarUrls]);
+  }, [detenerTimer, detenerPistasStream]);
 
-  // Limpieza al desmontar
+  // Limpieza total al desmontar el componente
   useEffect(() => {
     return () => {
+      sesionGeneracionRef.current += 1;
       detenerTimer();
       detenerPistasStream();
-      limpiarUrls();
+      audioChunksRef.current = [];
     };
-  }, [detenerTimer, detenerPistasStream, limpiarUrls]);
+  }, [detenerTimer, detenerPistasStream]);
 
   const iniciarGrabacion = useCallback(async (): Promise<boolean> => {
     limpiarRecursos();
+    const generacionActual = sesionGeneracionRef.current;
 
     if (
       typeof window === "undefined" ||
@@ -106,15 +104,48 @@ export function useGrabacionAudio(): GrabacionAudioResult {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (sesionGeneracionRef.current !== generacionActual) {
+        // La sesión fue cancelada mientras se solicitaba el permiso
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        return false;
+      }
+
       mediaStreamRef.current = stream;
 
-      const recorder = new MediaRecorder(stream);
+      // Detectar formato preferido
+      let mimeType = "audio/webm;codecs=opus";
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        if (MediaRecorder.isTypeSupported("audio/webm")) {
+          mimeType = "audio/webm";
+        } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+          mimeType = "audio/ogg";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        } else {
+          mimeType = "";
+        }
+      }
+
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
       recorder.ondataavailable = (event: BlobEvent) => {
-        if (event.data && event.data.size > 0) {
+        if (sesionGeneracionRef.current === generacionActual && event.data && event.data.size > 0) {
           audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onerror = () => {
+        if (sesionGeneracionRef.current === generacionActual) {
+          detenerPistasStream();
+          setEstado("error");
+          setError("Ocurrió un error en la captura de audio.");
         }
       };
 
@@ -128,44 +159,55 @@ export function useGrabacionAudio(): GrabacionAudioResult {
 
       return true;
     } catch (err: unknown) {
-      detenerPistasStream();
-      setEstado("error");
-      const errorMsg =
-        err instanceof Error && err.name === "NotAllowedError"
-          ? "Permiso de micrófono denegado por el usuario o el navegador."
-          : "No se pudo acceder al micrófono para la grabación de audio.";
-      setError(errorMsg);
+      if (sesionGeneracionRef.current === generacionActual) {
+        detenerPistasStream();
+        setEstado("error");
+        const errorMsg =
+          err instanceof Error && err.name === "NotAllowedError"
+            ? "Permiso de micrófono denegado por el usuario o el navegador."
+            : "No se pudo acceder al micrófono para la grabación de audio.";
+        setError(errorMsg);
+      }
       return false;
     }
   }, [limpiarRecursos, detenerPistasStream]);
 
-  const detenerGrabacion = useCallback(async (): Promise<string | null> => {
+  const detenerGrabacion = useCallback(async (): Promise<GrabacionAudioMetadata | null> => {
     detenerTimer();
+    const generacionActual = sesionGeneracionRef.current;
 
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === "inactive") {
       detenerPistasStream();
-      return audioUrlRef.current;
+      setEstado("inactivo");
+      return null;
     }
 
-    return new Promise<string | null>((resolve) => {
+    return new Promise<GrabacionAudioMetadata | null>((resolve) => {
       recorder.onstop = () => {
         detenerPistasStream();
+
+        if (sesionGeneracionRef.current !== generacionActual) {
+          resolve(null);
+          return;
+        }
 
         const mimeType = recorder.mimeType || "audio/webm";
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         audioChunksRef.current = [];
 
+        setEstado("inactivo");
+
         if (audioBlob.size === 0) {
-          setEstado("inactivo");
           resolve(null);
           return;
         }
 
-        const url = URL.createObjectURL(audioBlob);
-        setAudioUrl(url);
-        setEstado("listo");
-        resolve(url);
+        resolve({
+          blob: audioBlob,
+          duracionSegundos,
+          mimeType,
+        });
       };
 
       try {
@@ -176,9 +218,10 @@ export function useGrabacionAudio(): GrabacionAudioResult {
         resolve(null);
       }
     });
-  }, [detenerTimer, detenerPistasStream]);
+  }, [detenerTimer, detenerPistasStream, duracionSegundos]);
 
-  const cancelarGrabacion = useCallback(() => {
+  const descartarGrabacion = useCallback(() => {
+    sesionGeneracionRef.current += 1;
     detenerTimer();
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       try {
@@ -194,23 +237,14 @@ export function useGrabacionAudio(): GrabacionAudioResult {
     setDuracionSegundos(0);
   }, [detenerTimer, detenerPistasStream]);
 
-  const removerAudio = useCallback(() => {
-    limpiarUrls();
-    setAudioUrl(null);
-    setEstado("inactivo");
-    setDuracionSegundos(0);
-    setError(null);
-  }, [limpiarUrls]);
-
   return {
     estado,
-    audioUrl,
     error,
     duracionSegundos,
     iniciarGrabacion,
     detenerGrabacion,
-    cancelarGrabacion,
-    removerAudio,
+    descartarGrabacion,
+    cancelarGrabacion: descartarGrabacion,
     limpiarRecursos,
   };
 }

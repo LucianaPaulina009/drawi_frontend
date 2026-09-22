@@ -5,11 +5,9 @@ import { useGrabacionAudio } from "./use-grabacion-audio";
 describe("useGrabacionAudio", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    global.URL.createObjectURL = vi.fn(() => "blob:audio-mock-123");
-    global.URL.revokeObjectURL = vi.fn();
   });
 
-  it("informa error comprensible si el navegador no admite getUserMedia o MediaRecorder", async () => {
+  it("informa error si el navegador no admite getUserMedia o MediaRecorder", async () => {
     // @ts-expect-error Mocking browser APIs
     delete global.navigator.mediaDevices;
     // @ts-expect-error Mocking browser APIs
@@ -35,7 +33,9 @@ describe("useGrabacionAudio", () => {
     // @ts-expect-error Mocking browser APIs
     global.navigator.mediaDevices = { getUserMedia: mockGetUserMedia };
     // @ts-expect-error Mocking browser APIs
-    global.MediaRecorder = class MockRecorder {};
+    global.MediaRecorder = class MockRecorder {
+      static isTypeSupported = vi.fn(() => true);
+    };
 
     const { result } = renderHook(() => useGrabacionAudio());
 
@@ -49,7 +49,7 @@ describe("useGrabacionAudio", () => {
     expect(result.current.error).toContain("Permiso de micrófono denegado");
   });
 
-  it("inicia y detiene la grabación con éxito generando la referencia de audio temporal", async () => {
+  it("inicia y detiene la grabación con éxito retornando los metadatos y Blob temporal", async () => {
     const mockTrack = { stop: vi.fn() };
     const mockStream = { getTracks: vi.fn(() => [mockTrack]) };
     const mockGetUserMedia = vi.fn().mockResolvedValue(mockStream);
@@ -58,8 +58,9 @@ describe("useGrabacionAudio", () => {
     let ondataHandler: ((e: { data: Blob }) => void) | null = null;
 
     class MockMediaRecorder {
+      static isTypeSupported = vi.fn(() => true);
       state = "recording";
-      mimeType = "audio/webm";
+      mimeType = "audio/webm;codecs=opus";
       start = vi.fn();
       stop = vi.fn(() => {
         this.state = "inactive";
@@ -93,26 +94,38 @@ describe("useGrabacionAudio", () => {
     expect(iniciado).toBe(true);
     expect(result.current.estado).toBe("grabando");
 
-    let urlResultado: string | null = null;
+    let metadataResultado: unknown = null;
     await act(async () => {
-      urlResultado = await result.current.detenerGrabacion();
+      metadataResultado = await result.current.detenerGrabacion();
     });
 
-    expect(urlResultado).toBe("blob:audio-mock-123");
-    expect(result.current.estado).toBe("listo");
-    expect(result.current.audioUrl).toBe("blob:audio-mock-123");
+    expect(metadataResultado).toEqual({
+      blob: expect.any(Blob),
+      duracionSegundos: 0,
+      mimeType: "audio/webm;codecs=opus",
+    });
+    expect(result.current.estado).toBe("inactivo");
     expect(mockTrack.stop).toHaveBeenCalled();
   });
 
-  it("cancela la grabación y libera recursos sin generar URL de audio", async () => {
+  it("descartarGrabacion cancela la grabación, limpia pistas y no entrega resultado", async () => {
     const mockTrack = { stop: vi.fn() };
     const mockStream = { getTracks: vi.fn(() => [mockTrack]) };
     const mockGetUserMedia = vi.fn().mockResolvedValue(mockStream);
 
+    let onstopHandler: (() => void) | null = null;
+
     class MockMediaRecorder {
+      static isTypeSupported = vi.fn(() => true);
       state = "recording";
       start = vi.fn();
-      stop = vi.fn();
+      stop = vi.fn(() => {
+        this.state = "inactive";
+        if (onstopHandler) onstopHandler();
+      });
+      set onstop(fn: () => void) {
+        onstopHandler = fn;
+      }
     }
 
     // @ts-expect-error Mocking browser APIs
@@ -128,11 +141,61 @@ describe("useGrabacionAudio", () => {
     expect(result.current.estado).toBe("grabando");
 
     act(() => {
-      result.current.cancelarGrabacion();
+      result.current.descartarGrabacion();
     });
 
     expect(result.current.estado).toBe("inactivo");
-    expect(result.current.audioUrl).toBeNull();
     expect(mockTrack.stop).toHaveBeenCalled();
+  });
+
+  it("ignora callbacks tardíos tras descarte de grabación", async () => {
+    const mockTrack = { stop: vi.fn() };
+    const mockStream = { getTracks: vi.fn(() => [mockTrack]) };
+    const mockGetUserMedia = vi.fn().mockResolvedValue(mockStream);
+
+    let onstopHandler: (() => void) | null = null;
+    let ondataHandler: ((e: { data: Blob }) => void) | null = null;
+
+    class MockMediaRecorder {
+      static isTypeSupported = vi.fn(() => true);
+      state = "recording";
+      mimeType = "audio/webm";
+      start = vi.fn();
+      stop = vi.fn();
+      set ondataavailable(fn: (e: { data: Blob }) => void) {
+        ondataHandler = fn;
+      }
+      set onstop(fn: () => void) {
+        onstopHandler = fn;
+      }
+    }
+
+    // @ts-expect-error Mocking browser APIs
+    global.navigator.mediaDevices = { getUserMedia: mockGetUserMedia };
+    // @ts-expect-error Mocking browser APIs
+    global.MediaRecorder = MockMediaRecorder;
+
+    const { result } = renderHook(() => useGrabacionAudio());
+
+    await act(async () => {
+      await result.current.iniciarGrabacion();
+    });
+
+    // Descartar
+    act(() => {
+      result.current.descartarGrabacion();
+    });
+
+    // Simular evento tardío disparado después del descarte
+    if (ondataHandler) {
+      // @ts-expect-error Invoking late callback
+      ondataHandler({ data: new Blob(["stale-audio"], { type: "audio/webm" }) });
+    }
+    if (onstopHandler) {
+      // @ts-expect-error Invoking late callback
+      onstopHandler();
+    }
+
+    expect(result.current.estado).toBe("inactivo");
   });
 });

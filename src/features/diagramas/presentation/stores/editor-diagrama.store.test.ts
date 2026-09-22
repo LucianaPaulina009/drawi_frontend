@@ -424,7 +424,7 @@ describe("editor-diagrama.store", () => {
               id: "attr-pk-orig",
               idClase: "c-origen",
               nombre: "id",
-              tipoDato: "integer",
+              tipoDato: "integer" as const,
               longitud: null,
               precision: null,
               escala: null,
@@ -449,7 +449,7 @@ describe("editor-diagrama.store", () => {
               id: "attr-pk-dest",
               idClase: "c-destino",
               nombre: "id",
-              tipoDato: "integer",
+              tipoDato: "integer" as const,
               longitud: null,
               precision: null,
               escala: null,
@@ -464,7 +464,7 @@ describe("editor-diagrama.store", () => {
               id: "attr-manual-dest",
               idClase: "c-destino",
               nombre: "usuario_id_manual",
-              tipoDato: "integer",
+              tipoDato: "integer" as const,
               longitud: null,
               precision: null,
               escala: null,
@@ -479,7 +479,7 @@ describe("editor-diagrama.store", () => {
               id: "attr-fk-dest",
               idClase: "c-destino",
               nombre: "usuario_id",
-              tipoDato: "integer",
+              tipoDato: "integer" as const,
               longitud: null,
               precision: null,
               escala: null,
@@ -537,7 +537,7 @@ describe("editor-diagrama.store", () => {
     };
     useEditorDiagramaStore.getState().ejecutarOperacionLocal(opEliminar);
 
-    let estado = useEditorDiagramaStore.getState();
+    const estado = useEditorDiagramaStore.getState();
     expect(estado.relaciones.length).toBe(0);
     const dest = estado.clases.find((c) => c.id === "c-destino");
     expect(dest).toBeDefined();

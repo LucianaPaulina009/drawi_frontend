@@ -6,6 +6,7 @@ import { useHistorialInteraccionesIa } from "./use-historial-interacciones-ia";
 vi.mock("../actions/interaccion-ia.action", () => ({
   listarInteraccionesIaAction: vi.fn(),
   enviarMensajeIaAction: vi.fn(),
+  enviarAudioIaAction: vi.fn(),
 }));
 
 describe("useHistorialInteraccionesIa", () => {
@@ -138,5 +139,66 @@ describe("useHistorialInteraccionesIa", () => {
     expect(result.current.interacciones[0].id).toBe("confirmed-id");
     expect(result.current.interacciones[0].estado).toBe("COMPLETADO");
     expect(result.current.interacciones[0].respuestaIa).toBe("Hola usuario!");
+  });
+
+  it("envía audio en una sola interacción sin burbujas optimistas intermedias", async () => {
+    vi.mocked(actions.listarInteraccionesIaAction).mockResolvedValue({
+      ok: true,
+      data: { items: [] },
+    });
+
+    const voiceKey = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    vi.mocked(actions.enviarAudioIaAction).mockResolvedValue({
+      ok: true,
+      data: {
+        id: "confirmed-voice-id",
+        idDiagrama: diagramaId,
+        idUsuario: "user-1",
+        tipo: "VOZ_AUDIO",
+        estado: "COMPLETADO",
+        entradaUsuario: "Crea una clase Producto",
+        respuestaIa: "Clase Producto creada exitosamente",
+        claveIdempotencia: voiceKey,
+        creadoEn: "2026-09-20T12:00:00Z",
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useHistorialInteraccionesIa(diagramaId)
+    );
+
+    await waitFor(() => {
+      expect(result.current.cargando).toBe(false);
+    });
+
+    const fakeBlob = new Blob(["audio-bytes"], { type: "audio/webm" });
+
+    let envioPromesa: Promise<boolean>;
+    act(() => {
+      envioPromesa = result.current.enviarAudio(fakeBlob, {
+        claveIdempotencia: voiceKey,
+        duracionSegundos: 4,
+      });
+    });
+
+    // Durante el envío de audio, NO se añade burbuja provisional al historial
+    expect(result.current.interacciones).toHaveLength(0);
+    expect(result.current.enviando).toBe(true);
+
+    await act(async () => {
+      const exitoso = await envioPromesa;
+      expect(exitoso).toBe(true);
+    });
+
+    expect(actions.enviarAudioIaAction).toHaveBeenCalledWith(
+      diagramaId,
+      expect.any(FormData)
+    );
+    expect(result.current.interacciones).toHaveLength(1);
+    expect(result.current.interacciones[0].id).toBe("confirmed-voice-id");
+    expect(result.current.interacciones[0].tipo).toBe("VOZ_AUDIO");
+    expect(result.current.interacciones[0].entradaUsuario).toBe("Crea una clase Producto");
+    expect(result.current.interacciones[0].respuestaIa).toBe("Clase Producto creada exitosamente");
+    expect(result.current.enviando).toBe(false);
   });
 });

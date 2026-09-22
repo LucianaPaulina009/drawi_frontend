@@ -1,15 +1,29 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { Position } from "@xyflow/react";
+
+vi.mock("@xyflow/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@xyflow/react")>();
+  return {
+    ...actual,
+    EdgeLabelRenderer: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="edge-label-renderer">{children}</div>
+    ),
+  };
+});
 
 import {
   debeMostrarCardinalidades,
   obtenerMarcadoresRelacion,
   obtenerNombreVisualTipo,
   obtenerPosicionCardinalidad,
+  obtenerPosicionCardinalidadRecursiva,
   obtenerPosicionLabelRelacion,
   obtenerRutaOrtogonalConCarril,
+  RelacionUmlEdge,
   resolverExtremoRamalNm,
 } from "./relacion-uml-edge";
-import { Position } from "@xyflow/react";
+import type { Relacion } from "../../../domain/entities/relacion.entity";
 
 describe("resolverExtremoRamalNm", () => {
   it("termina en el borde inferior medido cuando la intermedia está arriba", () => {
@@ -156,4 +170,98 @@ describe("proyección visual de relaciones UML", () => {
     expect(extremo.estaArriba).toBe(true);
     expect(extremo.y).toBe(100); // borde inferior de la clase intermedia
   });
+
+  it("calcula posiciones diferenciadas y sin superposición para cardinalidades de relaciones recursivas", () => {
+    // Caso estándar: source sale por la derecha (320, 160), target entra por arriba (210, 100)
+    const sourcePos = obtenerPosicionCardinalidadRecursiva(
+      320,
+      160,
+      Position.Right,
+      true,
+      0,
+      false
+    );
+    const targetPos = obtenerPosicionCardinalidadRecursiva(
+      210,
+      100,
+      Position.Top,
+      false,
+      0,
+      false
+    );
+
+    // Source debe ubicarse hacia la derecha y ligeramente arriba de la línea de salida
+    expect(sourcePos.x).toBe(342);
+    expect(sourcePos.y).toBe(146);
+
+    // Target debe ubicarse arriba del nodo (y < 100) y desplazado del conector
+    expect(targetPos.x).toBe(196);
+    expect(targetPos.y).toBe(78); // Claramente fuera del nodo (y=100) hacia arriba
+
+    // Distancia Euclidiana entre ambas cardinalidades > 100px para garantizar cero superposición
+    const dx = targetPos.x - sourcePos.x;
+    const dy = targetPos.y - sourcePos.y;
+    const distancia = Math.sqrt(dx * dx + dy * dy);
+    expect(distancia).toBeGreaterThan(100);
+  });
+
+  it("mantiene posiciones de cardinalidad de relaciones no recursivas sin regresión", () => {
+    const posOrigen = obtenerPosicionCardinalidad(100, 200, Position.Right, 0, false);
+    const posDestino = obtenerPosicionCardinalidad(400, 200, Position.Left, 0, false);
+
+    expect(posOrigen).toEqual({ x: 126, y: 200 });
+    expect(posDestino).toEqual({ x: 374, y: 200 });
+  });
+
+  it("renderiza correctamente una relación recursiva 1:N con ambas cardinalidades visibles y nombre sin superponer", () => {
+    const relacionRecursiva: Relacion = {
+      id: "rel-recursiva-1",
+      idDiagrama: "diag-1",
+      idClaseOrigen: "clase-empleado",
+      idClaseDestino: "clase-empleado",
+      tipoRelacion: "asociacion",
+      cardinalidadOrigen: "1",
+      cardinalidadDestino: "0..*",
+      conectorOrigen: "right",
+      conectorDestino: "top",
+      nombre: "Supervisa",
+      referenciasFk: [],
+    };
+
+    render(
+      <svg>
+        <RelacionUmlEdge
+          id="rel-recursiva-1"
+          source="clase-empleado"
+          target="clase-empleado"
+          sourceX={320}
+          sourceY={160}
+          targetX={210}
+          targetY={100}
+          sourcePosition={Position.Right}
+          targetPosition={Position.Top}
+          data={{
+            relacion: relacionRecursiva,
+            seleccionada: false,
+            puedeEditar: true,
+          }}
+        />
+      </svg>
+    );
+
+    // Ambas cardinalidades deben estar presentes en el documento
+    const cardOrigen = screen.getByTestId("cardinalidad-origen");
+    const cardDestino = screen.getByTestId("cardinalidad-destino");
+
+    expect(cardOrigen).toBeInTheDocument();
+    expect(cardOrigen.textContent).toBe("1");
+
+    expect(cardDestino).toBeInTheDocument();
+    expect(cardDestino.textContent).toBe("0..*");
+
+    // El nombre de la relación debe estar visible
+    const botonNombre = screen.getByRole("button", { name: "Supervisa" });
+    expect(botonNombre).toBeInTheDocument();
+  });
 });
+

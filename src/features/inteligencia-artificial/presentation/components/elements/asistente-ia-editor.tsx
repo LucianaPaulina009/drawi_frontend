@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAsistenteIa } from "../../hooks/use-asistente-ia";
 import { useGrabacionAudio } from "../../hooks/use-grabacion-audio";
 import { useHistorialInteraccionesIa } from "../../hooks/use-historial-interacciones-ia";
 import { useEditorDiagramaStore } from "@/features/diagramas/presentation/stores/editor-diagrama.store";
 import { MascotaDrawi } from "./mascota-drawi";
 import { PanelChatDrawi } from "./panel-chat-drawi";
+import type { EstadoVoz } from "./control-audio-drawi";
 
 export interface AsistenteIaEditorProps {
   diagramaId: string | null;
   abierto: boolean;
   onAbrir: () => void;
   onCerrar: () => void;
+  onInteraccionIaEnCursoChange?: (enCurso: boolean) => void;
   className?: string;
 }
 
@@ -21,6 +23,7 @@ export function AsistenteIaEditor({
   abierto,
   onAbrir,
   onCerrar,
+  onInteraccionIaEnCursoChange,
   className,
 }: AsistenteIaEditorProps) {
   const asistente = useAsistenteIa(diagramaId);
@@ -29,9 +32,37 @@ export function AsistenteIaEditor({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [modoImagen, setModoImagen] = useState(false);
 
-  // Reset de audio al cambiar de diagrama
+  const [estadoVoz, setEstadoVoz] = useState<EstadoVoz>("idle");
+  const [errorVoz, setErrorVoz] = useState<string | null>(null);
+  const claveIdempotenciaVozRef = useRef<string>(crypto.randomUUID());
+  const diagramaActivoRef = useRef<string | null>(diagramaId);
+
+  useEffect(() => {
+    diagramaActivoRef.current = diagramaId;
+  }, [diagramaId]);
+
+  // Bloqueo derivado de voz
+  const vozBloqueada = useMemo(
+    () =>
+      estadoVoz === "grabando" ||
+      estadoVoz === "transcribiendo" ||
+      estadoVoz === "procesando",
+    [estadoVoz]
+  );
+
+  // Guardia única combinada
+  const interaccionIaEnCurso = Boolean(historialIa.enviando || vozBloqueada);
+
+  useEffect(() => {
+    onInteraccionIaEnCursoChange?.(interaccionIaEnCurso);
+  }, [interaccionIaEnCurso, onInteraccionIaEnCursoChange]);
+
+  // Reset de audio y estado de voz al cambiar de diagrama
   useEffect(() => {
     grabacion.limpiarRecursos();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEstadoVoz("idle");
+    setErrorVoz(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diagramaId]);
 
@@ -69,7 +100,7 @@ export function AsistenteIaEditor({
 
     input.addEventListener("cancel", handleCancel, { once: true });
 
-    // Listener para cuando la ventana recupera el foco (caso cancelar en navegadores que no emiten cancel)
+    // Listener para cuando la ventana recupera el foco
     const handleWindowFocus = () => {
       setTimeout(() => {
         setModoImagen(false);
@@ -81,12 +112,72 @@ export function AsistenteIaEditor({
     input.click();
   };
 
-  const handleGrabarAudioMascota = async () => {
-    if (grabacion.estado === "grabando") {
-      await grabacion.detenerGrabacion();
+  const handleAlternarGrabacion = async () => {
+    if (!diagramaId) return;
+    const currentDiagramId = diagramaId;
+
+    // Si ya está grabando, segundo clic detiene y procesa el audio en una sola interacción de voz
+    if (grabacion.estado === "grabando" || estadoVoz === "grabando") {
+      const resultado = await grabacion.detenerGrabacion();
+      if (!resultado || !resultado.blob || resultado.blob.size === 0) {
+        setEstadoVoz("idle");
+        return;
+      }
+
+      setEstadoVoz("procesando");
+      setErrorVoz(null);
+
+      try {
+        const ok = await historialIa.enviarAudio(resultado.blob, {
+          claveIdempotencia: claveIdempotenciaVozRef.current,
+          duracionSegundos: resultado.duracionSegundos,
+          mimeType: resultado.mimeType,
+        });
+
+        if (diagramaActivoRef.current !== currentDiagramId) {
+          setEstadoVoz("idle");
+          return;
+        }
+
+        if (!ok) {
+          setEstadoVoz("error");
+          setErrorVoz(
+            historialIa.error || "No se pudo procesar la grabación de voz."
+          );
+        } else {
+          setEstadoVoz("idle");
+        }
+      } catch {
+        if (diagramaActivoRef.current === currentDiagramId) {
+          setEstadoVoz("error");
+          setErrorVoz("Error de red al procesar la grabación de voz.");
+        }
+      } finally {
+        if (diagramaActivoRef.current === currentDiagramId) {
+          setEstadoVoz((prev) => (prev === "procesando" ? "idle" : prev));
+        }
+      }
     } else {
-      await grabacion.iniciarGrabacion();
+      // Iniciar nueva sesión de grabación
+      if (interaccionIaEnCurso) return;
+
+      claveIdempotenciaVozRef.current = crypto.randomUUID();
+      setEstadoVoz("solicitando");
+      setErrorVoz(null);
+
+      const ok = await grabacion.iniciarGrabacion();
+      if (ok) {
+        setEstadoVoz("grabando");
+      } else {
+        setEstadoVoz("error");
+      }
     }
+  };
+
+  const handleDescartarGrabacion = () => {
+    grabacion.descartarGrabacion();
+    setEstadoVoz("idle");
+    setErrorVoz(null);
   };
 
   const handleGenerarBackend = () => {
@@ -100,13 +191,16 @@ export function AsistenteIaEditor({
       contenido += `// No hay clases definidas en el diagrama actualmente.\nexport {};\n`;
     } else {
       for (const cls of clases) {
-        const nombreClase = (cls.nombre || "Clase").replace(/[^a-zA-Z0-9_$]/g, "") || "Clase";
+        const nombreClase =
+          (cls.nombre || "Clase").replace(/[^a-zA-Z0-9_$]/g, "") || "Clase";
         contenido += `export interface ${nombreClase} {\n`;
         if (cls.atributos && cls.atributos.length > 0) {
           for (const attr of cls.atributos) {
             const tipoDato = attr.tipoDato || "varchar";
             const tipoTs =
-              tipoDato === "integer" || tipoDato === "bigint" || tipoDato === "decimal"
+              tipoDato === "integer" ||
+              tipoDato === "bigint" ||
+              tipoDato === "decimal"
                 ? "number"
                 : tipoDato === "boolean"
                 ? "boolean"
@@ -115,7 +209,8 @@ export function AsistenteIaEditor({
                 : "string";
             const opcional = attr.permiteNulo ? "?" : "";
             const pkComment = attr.esLlavePrimaria ? " // PRIMARY KEY" : "";
-            const nombreCampo = (attr.nombre || "campo").replace(/[^a-zA-Z0-9_$]/g, "") || "campo";
+            const nombreCampo =
+              (attr.nombre || "campo").replace(/[^a-zA-Z0-9_$]/g, "") || "campo";
             contenido += `  ${nombreCampo}${opcional}: ${tipoTs};${pkComment}\n`;
           }
         } else {
@@ -127,15 +222,21 @@ export function AsistenteIaEditor({
       if (relaciones && relaciones.length > 0) {
         contenido += `/**\n * Relaciones UML registradas:\n`;
         for (const rel of relaciones) {
-          const origen = clases.find((c) => c.id === rel.idClaseOrigen)?.nombre || rel.idClaseOrigen;
-          const destino = clases.find((c) => c.id === rel.idClaseDestino)?.nombre || rel.idClaseDestino;
+          const origen =
+            clases.find((c) => c.id === rel.idClaseOrigen)?.nombre ||
+            rel.idClaseOrigen;
+          const destino =
+            clases.find((c) => c.id === rel.idClaseDestino)?.nombre ||
+            rel.idClaseDestino;
           contenido += ` * - ${origen} -> ${destino} (${rel.tipoRelacion})\n`;
         }
         contenido += ` */\n`;
       }
     }
 
-    const blob = new Blob([contenido], { type: "text/typescript;charset=utf-8" });
+    const blob = new Blob([contenido], {
+      type: "text/typescript;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -173,9 +274,10 @@ export function AsistenteIaEditor({
         onToggle={handleToggle}
         onAbrirChat={onAbrir}
         onSubirImagen={handleSubirImagenMascota}
-        onGrabarAudio={handleGrabarAudioMascota}
+        onGrabarAudio={handleAlternarGrabacion}
+        onDescartarAudio={handleDescartarGrabacion}
         onGenerarBackend={handleGenerarBackend}
-        modoAudioExterno={grabacion.estado === "grabando"}
+        modoAudioExterno={grabacion.estado === "grabando" || estadoVoz === "grabando"}
         modoImagenExterno={modoImagen}
         className={className}
       />
@@ -186,6 +288,11 @@ export function AsistenteIaEditor({
         asistente={asistente}
         grabacion={grabacion}
         historialIa={historialIa}
+        estadoVoz={estadoVoz}
+        errorVoz={errorVoz}
+        deshabilitadoVoz={historialIa.enviando}
+        onAlternarGrabacion={handleAlternarGrabacion}
+        onDescartarGrabacion={handleDescartarGrabacion}
         onEnviarMensaje={historialIa.enviarMensaje}
       />
     </div>

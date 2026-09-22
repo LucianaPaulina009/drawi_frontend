@@ -146,6 +146,8 @@ export function EditorProyecto({
   const router = useRouter();
   const { data: session } = authClient.useSession();
   const { puedeEditar, esPropietario } = usePermisoEdicionDiagrama(proyecto);
+  const [interaccionIaEnCurso, setInteraccionIaEnCurso] = useState(false);
+  const puedeEditarEfectivo = puedeEditar && !interaccionIaEnCurso;
 
   // Lista de páginas en estado local
   const [diagramas, setDiagramas] = useState<Diagrama[]>(diagramasIniciales);
@@ -313,7 +315,7 @@ export function EditorProyecto({
 
   // Manejo de Delete / Supr centralizado
   const handleEliminarSeleccion = useCallback(() => {
-    if (!puedeEditar) return;
+    if (!puedeEditarEfectivo) return;
     if (relacionSeleccionadaId) {
       const rel = relacionesLocalesRef.current.find(
         (r) => r.id === relacionSeleccionadaId
@@ -354,7 +356,7 @@ export function EditorProyecto({
       }
     }
   }, [
-    puedeEditar,
+    puedeEditarEfectivo,
     relacionSeleccionadaId,
     modoPanel,
     atributoSeleccionadoId,
@@ -364,7 +366,7 @@ export function EditorProyecto({
   // Copia de Atributo (Ctrl+D o botón de fila)
   const handleCopiarAtributo = useCallback(
     async (atributo: Atributo) => {
-      if (!puedeEditar || isPendingOperacion || !diagramaActivoId) return;
+      if (!puedeEditarEfectivo || isPendingOperacion || !diagramaActivoId) return;
 
       if (atributo.esLlavePrimaria) {
         appToast.error("Acción no permitida", "No se puede duplicar la clave primaria de una clase.");
@@ -400,12 +402,12 @@ export function EditorProyecto({
         appToast.error("Error", "No se pudo registrar la copia del atributo.");
       }
     },
-    [puedeEditar, isPendingOperacion, diagramaActivoId, encolarOperacion]
+    [puedeEditarEfectivo, isPendingOperacion, diagramaActivoId, encolarOperacion]
   );
 
   // Atajo Ctrl+D para duplicar el atributo activo
   const handleDuplicarSeleccion = useCallback(() => {
-    if (!puedeEditar) return;
+    if (!puedeEditarEfectivo) return;
     if (atributoSeleccionadoId && claseSeleccionadaId) {
       const clasePadre = clasesLocalesRef.current.find(
         (c) => c.id === claseSeleccionadaId
@@ -417,7 +419,7 @@ export function EditorProyecto({
         handleCopiarAtributo(attr);
       }
     }
-  }, [puedeEditar, atributoSeleccionadoId, claseSeleccionadaId, handleCopiarAtributo]);
+  }, [puedeEditarEfectivo, atributoSeleccionadoId, claseSeleccionadaId, handleCopiarAtributo]);
 
   // Hook centralizado de atajos del editor (Espacio, Ctrl+N, Ctrl+S, Ctrl+D, Delete)
   const { espacioPresionado } = useAtajosEditor({
@@ -427,7 +429,8 @@ export function EditorProyecto({
     onEliminarSeleccion: handleEliminarSeleccion,
     onCancelarInteraccion: () => setHerramientaActiva("seleccion"),
     deshabilitado: Boolean(
-      diagramaARenombrar ||
+      interaccionIaEnCurso ||
+        diagramaARenombrar ||
         diagramaAEliminar ||
         modalCompartirAbierto ||
         claseAEliminar ||
@@ -717,7 +720,7 @@ export function EditorProyecto({
   // Creación de Clase compacta al hacer clic sobre el pane (T027)
   const handleCrearClaseEnPosicion = useCallback(
     async (x: number, y: number) => {
-      if (!puedeEditar || !diagramaActivoId) return;
+      if (!puedeEditarEfectivo || !diagramaActivoId) return;
 
       if (!Number.isFinite(x) || !Number.isFinite(y)) {
         console.warn(`[handleCrearClaseEnPosicion] Coordenadas inválidas ignoradas: x=${x}, y=${y}`);
@@ -750,13 +753,13 @@ export function EditorProyecto({
         appToast.error("Error", "No se pudo registrar la creación local de la clase.");
       }
     },
-    [puedeEditar, diagramaActivoId, encolarOperacion, setClaseSeleccionadaId, setAtributoSeleccionadoId, setModoPanel, setHerramientaActiva, setPanelPropiedadesAbierto]
+    [puedeEditarEfectivo, diagramaActivoId, encolarOperacion, setClaseSeleccionadaId, setAtributoSeleccionadoId, setModoPanel, setHerramientaActiva, setPanelPropiedadesAbierto]
   );
 
   // Movimiento de Clase al soltar drag (onNodeDragStop): toma la posición final y ejecuta un único evento
   const handleMoverClaseStop = useCallback(
     async (idClase: string, x: number, y: number) => {
-      if (!puedeEditar || !diagramaActivoId) return;
+      if (!puedeEditarEfectivo || !diagramaActivoId) return;
 
       if (!Number.isFinite(x) || !Number.isFinite(y)) {
         console.warn(`[handleMoverClaseStop] Coordenadas no finitas ignoradas: idClase=${idClase}, x=${x}, y=${y}`);
@@ -779,13 +782,13 @@ export function EditorProyecto({
         appToast.error("Error", "No se pudo registrar el movimiento local.");
       }
     },
-    [puedeEditar, diagramaActivoId, encolarOperacion]
+    [puedeEditarEfectivo, diagramaActivoId, encolarOperacion]
   );
 
   // Redimensionamiento visual en el lienzo al soltar handle de resize (ancho >= 180)
   const handleRedimensionarClaseStop = useCallback(
     async (idClase: string, nuevoAncho: number) => {
-      if (!puedeEditar || !diagramaActivoId) return;
+      if (!puedeEditarEfectivo || !diagramaActivoId) return;
 
       if (!Number.isFinite(nuevoAncho)) {
         console.warn(`[handleRedimensionarClaseStop] Ancho no finito ignorado: idClase=${idClase}, ancho=${nuevoAncho}`);
@@ -805,7 +808,7 @@ export function EditorProyecto({
         appToast.error("Error", "No se pudo registrar el cambio de ancho.");
       }
     },
-    [puedeEditar, diagramaActivoId, encolarOperacion]
+    [puedeEditarEfectivo, diagramaActivoId, encolarOperacion]
   );
 
   // Renombrado de Clase (desde panel o modal)
@@ -839,7 +842,7 @@ export function EditorProyecto({
   // Renombrado rápido inline desde doble clic en nodo
   const handleRenombrarClaseInline = useCallback(
     async (idClase: string, nuevoNombre: string) => {
-      if (!puedeEditar || !diagramaActivoId) return;
+      if (!puedeEditarEfectivo || !diagramaActivoId) return;
 
       const cleanNombre = nuevoNombre.trim();
       const claseActual = clasesLocalesRef.current.find((c) => c.id === idClase);
@@ -856,7 +859,7 @@ export function EditorProyecto({
         appToast.error("Error", "No se pudo registrar el cambio de nombre.");
       }
     },
-    [puedeEditar, diagramaActivoId, encolarOperacion]
+    [puedeEditarEfectivo, diagramaActivoId, encolarOperacion]
   );
 
   // Eliminación de Clase (Diálogo destructivo unificado por Borrador / Delete / Panel)
@@ -886,7 +889,7 @@ export function EditorProyecto({
 
   const handleAbrirNuevoAtributo = useCallback(
     async (idClase: string) => {
-      if (!puedeEditar || !diagramaActivoId) return;
+      if (!puedeEditarEfectivo || !diagramaActivoId) return;
 
       const clase = clasesLocalesRef.current.find((c) => c.id === idClase);
       if (!clase) return;
@@ -919,7 +922,7 @@ export function EditorProyecto({
       }
     },
     [
-      puedeEditar,
+      puedeEditarEfectivo,
       diagramaActivoId,
       encolarOperacion,
       setClaseSeleccionadaId,
@@ -1056,7 +1059,7 @@ export function EditorProyecto({
   // Reordenar Atributo (T030)
   const handleReordenarAtributo = useCallback(
     async (idClase: string, idAtributo: string, nuevoOrden: number) => {
-      if (!puedeEditar || !diagramaActivoId) return;
+      if (!puedeEditarEfectivo || !diagramaActivoId) return;
 
       if (!Number.isFinite(nuevoOrden)) {
         console.warn(`[handleReordenarAtributo] Orden no finito ignorado: nuevoOrden=${nuevoOrden}`);
@@ -1087,7 +1090,7 @@ export function EditorProyecto({
         appToast.error("Error", "No se pudo registrar el nuevo orden.");
       }
     },
-    [puedeEditar, diagramaActivoId, encolarOperacion]
+    [puedeEditarEfectivo, diagramaActivoId, encolarOperacion]
   );
 
   // ── Gestión de Relaciones UML y Referencias FK ──────────────────────────────
@@ -1095,7 +1098,7 @@ export function EditorProyecto({
   const handleConectarRelacion = useCallback(
     async (conexion: Connection) => {
       if (
-        !puedeEditar ||
+        !puedeEditarEfectivo ||
         !diagramaActivoId ||
         !conexion.source ||
         !conexion.target
@@ -1204,7 +1207,7 @@ export function EditorProyecto({
       }
     },
     [
-      puedeEditar,
+      puedeEditarEfectivo,
       diagramaActivoId,
       tipoRelacionPendiente,
       cardinalidadesPendientes,
@@ -1351,7 +1354,7 @@ export function EditorProyecto({
   // Renombrado inline exclusivo para relación de tipo Asociación (T038)
   const handleRenombrarRelacionInline = useCallback(
     async (idRelacion: string, nuevoNombre: string) => {
-      if (!puedeEditar || !diagramaActivoId) return;
+      if (!puedeEditarEfectivo || !diagramaActivoId) return;
 
       const cleanNombre = nuevoNombre.trim();
       const relActual = relacionesLocalesRef.current.find((r) => r.id === idRelacion);
@@ -1373,7 +1376,7 @@ export function EditorProyecto({
         appToast.error("Error", "No se pudo registrar el cambio de nombre de la relación.");
       }
     },
-    [puedeEditar, diagramaActivoId, encolarOperacion]
+    [puedeEditarEfectivo, diagramaActivoId, encolarOperacion]
   );
 
   // Eliminación unificada de Relacion (Borrador / Delete / Diálogo) (T039)
@@ -1429,7 +1432,7 @@ export function EditorProyecto({
         <LienzoDiagrama
           idDiagramaActivo={diagramaActivoId}
           diagramaActivo={detalleVisible}
-          puedeEditar={puedeEditar}
+          puedeEditar={puedeEditarEfectivo}
           cargandoDetalle={cargandoDetalle}
           herramientaActiva={herramientaActiva}
           espacioPresionado={espacioPresionado}
@@ -1459,7 +1462,7 @@ export function EditorProyecto({
             clase={claseSeleccionada}
             atributoSeleccionado={atributoSeleccionado}
             modo={modoPanel}
-            puedeEditar={puedeEditar}
+            puedeEditar={puedeEditarEfectivo}
             isPending={isPendingOperacion}
             onCerrar={handleCerrarPanel}
             onCambiarModo={handleCambiarModoPanel}
@@ -1473,7 +1476,7 @@ export function EditorProyecto({
 
         {/* Panel Flotante Izquierdo para Configurar Relaciones UML */}
         <PanelRelaciones
-          abierto={herramientaActiva === "relacion" && puedeEditar}
+          abierto={herramientaActiva === "relacion" && puedeEditarEfectivo}
           tipo={tipoRelacionPendiente}
           cardinalidades={cardinalidadesPendientes}
           conexionPendiente={conexionPendiente}
@@ -1556,7 +1559,7 @@ export function EditorProyecto({
         {/* Barra de Herramientas Flotante (Inferior Central) */}
         <BarraHerramientas
           herramientaActiva={herramientaActiva}
-          puedeEditar={puedeEditar}
+          puedeEditar={puedeEditarEfectivo}
           onCambiarHerramienta={setHerramientaActiva}
         />
 
@@ -1566,6 +1569,7 @@ export function EditorProyecto({
           abierto={panelIaAbierto}
           onAbrir={handleAbrirIa}
           onCerrar={handleCerrarIa}
+          onInteraccionIaEnCursoChange={setInteraccionIaEnCurso}
         />
 
         {/* Modal para compartir proyecto */}

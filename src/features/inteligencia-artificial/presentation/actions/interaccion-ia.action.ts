@@ -64,3 +64,76 @@ export async function enviarMensajeIaAction(
     parsedBody.data
   );
 }
+
+export async function enviarAudioIaAction(
+  idDiagrama: string,
+  formData: FormData
+): Promise<ApiResult<InteraccionIa>> {
+  const parsedDiagrama = IdDiagramaParamSchema.safeParse(idDiagrama);
+  if (!parsedDiagrama.success) {
+    return {
+      ok: false,
+      statusCode: 400,
+      errors: ["Identificador de diagrama inválido."],
+    };
+  }
+
+  const audioFile = formData.get("audio");
+  if (!audioFile || !(audioFile instanceof Blob)) {
+    return {
+      ok: false,
+      statusCode: 400,
+      errors: ["No se proporcionó un archivo de audio válido."],
+    };
+  }
+
+  const claveIdempotenciaRaw = formData.get("clave_idempotencia");
+  const claveIdempotencia =
+    typeof claveIdempotenciaRaw === "string" && claveIdempotenciaRaw.trim()
+      ? claveIdempotenciaRaw.trim()
+      : crypto.randomUUID();
+
+  const duracionRaw = formData.get("duracion_segundos");
+  const duracion = duracionRaw ? Number(duracionRaw) : undefined;
+
+  return interaccionIaRepositoryImpl.enviarAudio(
+    parsedDiagrama.data,
+    audioFile,
+    claveIdempotencia,
+    audioFile.type,
+    duracion
+  );
+}
+
+export async function transcribirAudioIaAction(
+  idDiagrama: string,
+  formData: FormData
+) {
+  const parsedDiagrama = IdDiagramaParamSchema.safeParse(idDiagrama);
+  if (!parsedDiagrama.success) {
+    return {
+      ok: false as const,
+      statusCode: 400,
+      errors: ["Identificador de diagrama inválido."],
+    };
+  }
+
+  const audioFile = formData.get("audio");
+  if (!audioFile || !(audioFile instanceof Blob)) {
+    return {
+      ok: false as const,
+      statusCode: 400,
+      errors: ["No se proporcionó un archivo de audio válido."],
+    };
+  }
+
+  const duracionRaw = formData.get("duracion_segundos");
+  const duracion = duracionRaw ? Number(duracionRaw) : undefined;
+
+  return interaccionIaRepositoryImpl.transcribirAudio(
+    parsedDiagrama.data,
+    audioFile,
+    audioFile.type,
+    duracion
+  );
+}

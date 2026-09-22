@@ -107,6 +107,43 @@ export function obtenerPosicionCardinalidad(
   );
 }
 
+export function obtenerPosicionCardinalidadRecursiva(
+  x: number,
+  y: number,
+  position: Position | undefined,
+  esSource: boolean,
+  desplazamiento = 0,
+  juntoAMarcador = false
+): { x: number; y: number } {
+  const offsetPerpendicular = 14;
+  const offsetParalelo = juntoAMarcador ? 30 : 22;
+
+  switch (position) {
+    case Position.Right:
+      return {
+        x: x + offsetParalelo,
+        y: y + (esSource ? -offsetPerpendicular : offsetPerpendicular) + desplazamiento,
+      };
+    case Position.Left:
+      return {
+        x: x - offsetParalelo,
+        y: y + (esSource ? -offsetPerpendicular : offsetPerpendicular) + desplazamiento,
+      };
+    case Position.Top:
+      return {
+        x: x + (esSource ? offsetPerpendicular : -offsetPerpendicular) + desplazamiento,
+        y: y - offsetParalelo,
+      };
+    case Position.Bottom:
+      return {
+        x: x + (esSource ? offsetPerpendicular : -offsetPerpendicular) + desplazamiento,
+        y: y + offsetParalelo,
+      };
+    default:
+      return { x: x + 20, y: y + (esSource ? -20 : 20) };
+  }
+}
+
 export function debeMostrarCardinalidades(tipo: TipoRelacion): boolean {
   return (
     tipo === "asociacion" ||
@@ -169,7 +206,7 @@ export function obtenerRutaOrtogonalConCarril(
   targetPosition: Position | undefined,
   _desplazamientoCarril = 0
 ): [string, number, number] {
-  return getSmoothStepPath({
+  const [path, labelX, labelY] = getSmoothStepPath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -179,6 +216,8 @@ export function obtenerRutaOrtogonalConCarril(
     borderRadius: 0,
     offset: 20,
   });
+
+  return [path, labelX, labelY];
 }
 
 
@@ -344,7 +383,14 @@ export const RelacionUmlEdge = memo(function RelacionUmlEdge({
   ]);
 
   const sourceLabelPos = esRecursiva
-    ? { x: sourceX + 28, y: sourceY - 24 + desplazamientoLabel }
+    ? obtenerPosicionCardinalidadRecursiva(
+        sourceX,
+        sourceY,
+        sourcePosition,
+        true,
+        desplazamientoLabel,
+        Boolean(markerStart)
+      )
     : obtenerPosicionCardinalidad(
         sourceX,
         sourceY,
@@ -354,7 +400,14 @@ export const RelacionUmlEdge = memo(function RelacionUmlEdge({
       );
 
   const targetLabelPos = esRecursiva
-    ? { x: targetX + 28, y: targetY + 24 - desplazamientoLabel }
+    ? obtenerPosicionCardinalidadRecursiva(
+        targetX,
+        targetY,
+        targetPosition,
+        false,
+        desplazamientoLabel,
+        Boolean(markerEnd)
+      )
     : obtenerPosicionCardinalidad(
         targetX,
         targetY,
@@ -580,22 +633,28 @@ export const RelacionUmlEdge = memo(function RelacionUmlEdge({
 
       {mostrarCardinalidades && (
         <EdgeLabelRenderer>
-          <div
-            className="pointer-events-none absolute rounded-md border border-slate-200/80 bg-white/95 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 shadow-xs backdrop-blur-xs nodrag nopan"
-            style={{
-              transform: `translate(-50%, -50%) translate(${sourceLabelPos.x}px,${sourceLabelPos.y}px)`,
-            }}
-          >
-            {relacion.cardinalidadOrigen}
-          </div>
-          <div
-            className="pointer-events-none absolute rounded-md border border-slate-200/80 bg-white/95 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 shadow-xs backdrop-blur-xs nodrag nopan"
-            style={{
-              transform: `translate(-50%, -50%) translate(${targetLabelPos.x}px,${targetLabelPos.y}px)`,
-            }}
-          >
-            {relacion.cardinalidadDestino}
-          </div>
+          {Boolean(relacion.cardinalidadOrigen) && (
+            <div
+              className="pointer-events-none absolute rounded-md border border-slate-200/80 bg-white/95 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 shadow-xs backdrop-blur-xs nodrag nopan"
+              style={{
+                transform: `translate(-50%, -50%) translate(${sourceLabelPos.x}px,${sourceLabelPos.y}px)`,
+              }}
+              data-testid="cardinalidad-origen"
+            >
+              {relacion.cardinalidadOrigen}
+            </div>
+          )}
+          {Boolean(relacion.cardinalidadDestino) && (
+            <div
+              className="pointer-events-none absolute rounded-md border border-slate-200/80 bg-white/95 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 shadow-xs backdrop-blur-xs nodrag nopan"
+              style={{
+                transform: `translate(-50%, -50%) translate(${targetLabelPos.x}px,${targetLabelPos.y}px)`,
+              }}
+              data-testid="cardinalidad-destino"
+            >
+              {relacion.cardinalidadDestino}
+            </div>
+          )}
         </EdgeLabelRenderer>
       )}
     </>

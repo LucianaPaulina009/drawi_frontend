@@ -1,5 +1,8 @@
 import type { ApiResult } from "@/features/shared/domain/types/api-results";
-import { apiRequestData } from "@/features/shared/infrastructure/http/api-client";
+import {
+  apiRequestData,
+  apiRequestFormData,
+} from "@/features/shared/infrastructure/http/api-client";
 import type {
   EnviarMensajeIaData,
   InteraccionIa,
@@ -11,6 +14,10 @@ import {
   InteraccionIaResponseSchema,
   ListaInteraccionesIaResponseSchema,
 } from "../schemas/interaccion-ia.schemas";
+import {
+  TranscripcionIaResponse,
+  TranscripcionIaResponseSchema,
+} from "../schemas/transcripcion-ia.schemas";
 
 const rawBackendUrl = (
   process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
@@ -50,10 +57,76 @@ export const interaccionIaRepositoryImpl: InteraccionIaRepository = {
       body: {
         texto: datos.texto.trim(),
         claveIdempotencia: datos.claveIdempotencia,
+        tipoInteraccion: datos.tipoInteraccion,
       },
       responseSchema: InteraccionIaResponseSchema,
       mapData: interaccionIaMapper.toDomain,
       fallbackMessage: "Error al comunicarse con el asistente DRAWI.",
+    });
+  },
+
+  enviarAudio(
+    idDiagrama: string,
+    blob: Blob,
+    claveIdempotencia: string,
+    mimeType?: string,
+    duracionSegundos?: number
+  ): Promise<ApiResult<InteraccionIa>> {
+    const formData = new FormData();
+    const type = mimeType || blob.type || "audio/webm";
+    const extension = type.includes("ogg")
+      ? "ogg"
+      : type.includes("wav")
+      ? "wav"
+      : type.includes("mp4") || type.includes("m4a")
+      ? "m4a"
+      : type.includes("mp3") || type.includes("mpeg")
+      ? "mp3"
+      : "webm";
+    formData.append("audio", blob, `grabacion.${extension}`);
+    formData.append("clave_idempotencia", claveIdempotencia);
+    if (duracionSegundos !== undefined && duracionSegundos > 0) {
+      formData.append("duracion_segundos", duracionSegundos.toString());
+    }
+
+    return apiRequestFormData({
+      url: `${BASE_URL}/${idDiagrama}/interacciones-ia/audio`,
+      method: "POST",
+      body: formData,
+      responseSchema: InteraccionIaResponseSchema,
+      mapData: interaccionIaMapper.toDomain,
+      fallbackMessage: "Error al procesar la grabación de voz con el asistente DRAWI.",
+    });
+  },
+
+  transcribirAudio(
+    idDiagrama: string,
+    blob: Blob,
+    mimeType?: string,
+    duracionSegundos?: number
+  ): Promise<ApiResult<TranscripcionIaResponse>> {
+    const formData = new FormData();
+    const type = mimeType || blob.type || "audio/webm";
+    const extension = type.includes("ogg")
+      ? "ogg"
+      : type.includes("wav")
+      ? "wav"
+      : type.includes("mp4") || type.includes("m4a")
+      ? "m4a"
+      : type.includes("mp3") || type.includes("mpeg")
+      ? "mp3"
+      : "webm";
+    formData.append("audio", blob, `grabacion.${extension}`);
+    if (duracionSegundos !== undefined && duracionSegundos > 0) {
+      formData.append("duracion_segundos", duracionSegundos.toString());
+    }
+
+    return apiRequestFormData({
+      url: `${BASE_URL}/${idDiagrama}/transcripciones-ia`,
+      method: "POST",
+      body: formData,
+      responseSchema: TranscripcionIaResponseSchema,
+      fallbackMessage: "Error al transcribir el audio grabado.",
     });
   },
 };

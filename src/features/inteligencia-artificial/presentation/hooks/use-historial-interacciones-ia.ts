@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { InteraccionIa } from "../../domain/entities/interaccion-ia.entity";
 import {
+  enviarAudioIaAction,
   enviarMensajeIaAction,
   listarInteraccionesIaAction,
 } from "../actions/interaccion-ia.action";
@@ -61,21 +62,29 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
 
   // Enviar mensaje con estado optimista e idempotencia
   const enviarMensaje = useCallback(
-    async (texto: string): Promise<boolean> => {
+    async (
+      texto: string,
+      opciones?: {
+        claveIdempotencia?: string;
+        tipoInteraccion?: "texto" | "audio";
+      }
+    ): Promise<boolean> => {
       const textoLimpio = texto.trim();
       if (!textoLimpio || !diagramaId || enviando) {
         return false;
       }
 
       const currentDiagramId = diagramaId;
-      const claveIdempotencia = crypto.randomUUID();
+      const claveIdempotencia =
+        opciones?.claveIdempotencia || crypto.randomUUID();
       const tempId = crypto.randomUUID();
+      const tipoInteraccion = opciones?.tipoInteraccion || "texto";
 
       const optimista: InteraccionIa = {
         id: tempId,
         idDiagrama: currentDiagramId,
         idUsuario: "yo",
-        tipo: "CONVERSACION",
+        tipo: tipoInteraccion === "audio" ? "VOZ_AUDIO" : "CONVERSACION",
         estado: "PROCESANDO",
         entradaUsuario: textoLimpio,
         respuestaIa: null,
@@ -91,6 +100,7 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
         const res = await enviarMensajeIaAction(currentDiagramId, {
           texto: textoLimpio,
           claveIdempotencia,
+          tipoInteraccion,
         });
 
         // Descartar respuesta si el usuario cambió de diagrama mientras se procesaba
@@ -145,6 +155,81 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
     [diagramaId, enviando]
   );
 
+  // Enviar audio temporal en una sola interacción de voz sin burbujas optimistas intermedias
+  const enviarAudio = useCallback(
+    async (
+      audioBlob: Blob,
+      opciones?: {
+        claveIdempotencia?: string;
+        duracionSegundos?: number;
+        mimeType?: string;
+      }
+    ): Promise<boolean> => {
+      if (!audioBlob || audioBlob.size === 0 || !diagramaId || enviando) {
+        return false;
+      }
+
+      const currentDiagramId = diagramaId;
+      const claveIdempotencia =
+        opciones?.claveIdempotencia || crypto.randomUUID();
+
+      setEnviando(true);
+      setError(null);
+
+      try {
+        const formData = new FormData();
+        const type = opciones?.mimeType || audioBlob.type || "audio/webm";
+        const extension = type.includes("ogg")
+          ? "ogg"
+          : type.includes("wav")
+          ? "wav"
+          : type.includes("mp4") || type.includes("m4a")
+          ? "m4a"
+          : type.includes("mp3") || type.includes("mpeg")
+          ? "mp3"
+          : "webm";
+        formData.append("audio", audioBlob, `grabacion.${extension}`);
+        formData.append("clave_idempotencia", claveIdempotencia);
+        if (
+          opciones?.duracionSegundos !== undefined &&
+          opciones.duracionSegundos > 0
+        ) {
+          formData.append(
+            "duracion_segundos",
+            opciones.duracionSegundos.toString()
+          );
+        }
+
+        const res = await enviarAudioIaAction(currentDiagramId, formData);
+
+        // Descartar si el diagrama cambió durante el procesamiento
+        if (diagramaActualRef.current !== currentDiagramId) {
+          return false;
+        }
+
+        if (res.ok) {
+          setInteracciones((prev) => [...prev, res.data]);
+          return true;
+        } else {
+          const mensajeError =
+            res.errors?.[0] || "Error al procesar el audio con el asistente DRAWI.";
+          setError(mensajeError);
+          return false;
+        }
+      } catch {
+        if (diagramaActualRef.current === currentDiagramId) {
+          setError("Error de red al procesar el audio con el asistente.");
+        }
+        return false;
+      } finally {
+        if (diagramaActualRef.current === currentDiagramId) {
+          setEnviando(false);
+        }
+      }
+    },
+    [diagramaId, enviando]
+  );
+
   const limpiarError = useCallback(() => {
     setError(null);
   }, []);
@@ -155,6 +240,7 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
     enviando,
     error,
     enviarMensaje,
+    enviarAudio,
     cargarHistorial,
     limpiarError,
   };

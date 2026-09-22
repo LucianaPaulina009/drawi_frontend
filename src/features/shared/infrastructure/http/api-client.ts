@@ -1,23 +1,23 @@
 /**
- * API Client \u2014 Cliente HTTP para peticiones al backend externo.
+ * API Client — Cliente HTTP para peticiones al backend externo.
  *
- * Caracter\u00edsticas:
- *   \u2022 Inyecci\u00f3n autom\u00e1tica de JWT (withAuth: true por defecto).
- *   \u2022 Retry autom\u00e1tico en 401: refresca el JWT y reintenta una sola vez.
- *   \u2022 Parseo de errores delegado al adaptador de backend activo
+ * Características:
+ *   • Inyección automática de JWT (withAuth: true por defecto).
+ *   • Retry automático en 401: refresca el JWT y reintenta una sola vez.
+ *   • Parseo de errores delegado al adaptador de backend activo
  *     (ver features/shared/infrastructure/errors/adapters/).
- *   \u2022 5 tipos de petici\u00f3n seg\u00fan la intenci\u00f3n: Data, MaybeData, Status,
- *     FormStatus y File.
+ *   • 6 tipos de petición según la intención: Data, MaybeData, Status,
+ *     FormStatus, FormData y File.
  *
- * Configuraci\u00f3n de autenticaci\u00f3n:
- *   withAuth: true  (default) \u2192 inyecta JWT autom\u00e1ticamente
- *   withAuth: false           \u2192 petici\u00f3n p\u00fablica sin token
+ * Configuración de autenticación:
+ *   withAuth: true  (default) → inyecta JWT automáticamente
+ *   withAuth: false           → petición pública sin token
  *
  * Ejemplo de uso:
  *   // Endpoint protegido (default)
  *   await apiRequestData({ url: "/api/schools", method: "GET", ... });
  *
- *   // Endpoint p\u00fablico
+ *   // Endpoint público
  *   await apiRequestData({ url: "/api/public", method: "GET", withAuth: false, ... });
  */
 
@@ -39,10 +39,10 @@ type RequestConfig = {
   url: string;
   method: ApiMethod;
   /**
-   * Si es true (por defecto), obtiene el JWT autom\u00e1ticamente y lo
-   * env\u00eda en el header `Authorization: Bearer <token>`.
+   * Si es true (por defecto), obtiene el JWT automáticamente y lo
+   * envía en el header `Authorization: Bearer <token>`.
    *
-   * Establece false para endpoints p\u00fablicos que no requieren autenticaci\u00f3n.
+   * Establece false para endpoints públicos que no requieren autenticación.
    */
   withAuth?: boolean;
   cache?: RequestCache;
@@ -78,6 +78,13 @@ type FormStatusRequestConfig = Omit<RequestConfig, "body"> & {
   body: FormData;
 };
 
+type FormDataRequestConfig<TParsed, TResult> = Omit<RequestConfig, "body"> & {
+  fallbackMessage: string;
+  responseSchema: ZodType<TParsed>;
+  mapData?: (data: TParsed) => TResult;
+  body: FormData;
+};
+
 type FileRequestConfig = RequestConfig & {
   fallbackMessage: string;
   defaultFileName: string;
@@ -86,8 +93,12 @@ type FileRequestConfig = RequestConfig & {
 
 // ─── Internos ────────────────────────────────────────────────────────────────
 
-/** Construye los headers de la petici\u00f3n, incluyendo el JWT si se proporciona. */
-function buildHeaders(token?: string | null, hasJsonBody?: boolean, headers?: HeadersInit): HeadersInit {
+/** Construye los headers de la petición, incluyendo el JWT si se proporciona. */
+function buildHeaders(
+  token?: string | null,
+  hasJsonBody?: boolean,
+  headers?: HeadersInit
+): HeadersInit {
   return {
     Accept: "application/json",
     ...(hasJsonBody ? { "Content-Type": "application/json" } : {}),
@@ -98,7 +109,7 @@ function buildHeaders(token?: string | null, hasJsonBody?: boolean, headers?: He
 
 /**
  * Obtiene el JWT de manera segura.
- * Retorna null (sin lanzar) si no hay sesi\u00f3n activa o si ocurre un error.
+ * Retorna null (sin lanzar) si no hay sesión activa o si ocurre un error.
  */
 async function resolveToken(withAuth: boolean): Promise<string | null> {
   if (!withAuth) return null;
@@ -109,8 +120,11 @@ async function resolveToken(withAuth: boolean): Promise<string | null> {
   }
 }
 
-/** Ejecuta un fetch JSON. Reutilizado por todas las funciones p\u00fablicas. */
-async function doRequest(config: RequestConfig, token: string | null): Promise<Response> {
+/** Ejecuta un fetch JSON. Reutilizado por todas las funciones públicas. */
+async function doRequest(
+  config: RequestConfig,
+  token: string | null
+): Promise<Response> {
   const hasBody = config.body !== undefined;
   return fetch(config.url, {
     method: config.method,
@@ -123,7 +137,7 @@ async function doRequest(config: RequestConfig, token: string | null): Promise<R
 /** Ejecuta un fetch con FormData. */
 async function doFormRequest(
   config: FormStatusRequestConfig,
-  token: string | null,
+  token: string | null
 ): Promise<Response> {
   return fetch(config.url, {
     method: config.method,
@@ -135,7 +149,7 @@ async function doFormRequest(
 
 /**
  * Intenta refrescar el JWT y retorna el nuevo token.
- * Si el refresco falla (sesi\u00f3n expirada), retorna null.
+ * Si el refresco falla (sesión expirada), retorna null.
  */
 async function tryRefreshToken(): Promise<string | null> {
   try {
@@ -154,7 +168,7 @@ type RequestExecutor = (token: string | null) => Promise<Response>;
  */
 async function executeWithAuthRetry(
   withAuth: boolean,
-  execute: RequestExecutor,
+  execute: RequestExecutor
 ): Promise<Response> {
   const token = await resolveToken(withAuth);
   let res = await execute(token);
@@ -177,24 +191,24 @@ async function executeWithAuthRetry(
   return res;
 }
 
-// ─── API P\u00fablica ──────────────────────────────────────────────────────────────
+// ─── API Pública ──────────────────────────────────────────────────────────────
 
 /**
  * Para endpoints que devuelven datos.
  * Parsea y mapea la respuesta con el schema y mapper indicados.
- * Reintenta autom\u00e1ticamente con JWT renovado en caso de 401.
+ * Reintenta automáticamente con JWT renovado en caso de 401.
  */
 export async function apiRequestData<TParsed, TResult>(
-  config: DataRequestConfig<TParsed, TResult>,
+  config: DataRequestConfig<TParsed, TResult>
 ): Promise<ApiResult<TResult>> {
   const withAuth = config.withAuth !== false;
 
   try {
     const res = await executeWithAuthRetry(withAuth, (token) =>
-      doRequest(config, token),
+      doRequest(config, token)
     );
 
-    // Retry en 401: el JWT expir\u00f3, refrescamos y reintentamos una vez
+    // Retry en 401: el JWT expiró, refrescamos y reintentamos una vez
     if (!res.ok) {
       return serverErrorResult(res, config.fallbackMessage);
     }
@@ -207,23 +221,23 @@ export async function apiRequestData<TParsed, TResult>(
 
     return { ok: true, data: config.mapData(parsed.data) };
   } catch {
-    return errorResult("Error de conexi\u00f3n. Intenta m\u00e1s tarde.");
+    return errorResult("Error de conexión. Intenta más tarde.");
   }
 }
 
 /**
  * Para endpoints donde la data puede ser null (ej: buscar por ID que no existe).
  * Trata el status notFoundStatus (default 404) como ok con data: null.
- * Reintenta autom\u00e1ticamente con JWT renovado en caso de 401.
+ * Reintenta automáticamente con JWT renovado en caso de 401.
  */
 export async function apiRequestMaybeData<TParsed, TResult = TParsed>(
-  config: MaybeDataRequestConfig<TParsed, TResult>,
+  config: MaybeDataRequestConfig<TParsed, TResult>
 ): Promise<ApiMaybeResult<TResult>> {
   const withAuth = config.withAuth !== false;
 
   try {
     const res = await executeWithAuthRetry(withAuth, (token) =>
-      doRequest(config, token),
+      doRequest(config, token)
     );
 
     // Retry en 401
@@ -257,23 +271,23 @@ export async function apiRequestMaybeData<TParsed, TResult = TParsed>(
         : (parsedResult.data as unknown as TResult),
     };
   } catch {
-    return errorResult("Error de conexi\u00f3n. Intenta m\u00e1s tarde.");
+    return errorResult("Error de conexión. Intenta más tarde.");
   }
 }
 
 /**
  * Para endpoints donde solo importa el status de la respuesta.
  * Usado en operaciones CRUD (create, update, delete) sin data de retorno.
- * Reintenta autom\u00e1ticamente con JWT renovado en caso de 401.
+ * Reintenta automáticamente con JWT renovado en caso de 401.
  */
 export async function apiRequestStatus(
-  config: StatusRequestConfig,
+  config: StatusRequestConfig
 ): Promise<ApiActionResult> {
   const withAuth = config.withAuth !== false;
 
   try {
     const res = await executeWithAuthRetry(withAuth, (token) =>
-      doRequest(config, token),
+      doRequest(config, token)
     );
 
     // Retry en 401
@@ -283,22 +297,22 @@ export async function apiRequestStatus(
 
     return { ok: true };
   } catch {
-    return errorResult("Error de conexi\u00f3n. Intenta m\u00e1s tarde.");
+    return errorResult("Error de conexión. Intenta más tarde.");
   }
 }
 
 /**
  * Para endpoints que reciben un FormData (subida de archivos, multipart).
- * Reintenta autom\u00e1ticamente con JWT renovado en caso de 401.
+ * Reintenta automáticamente con JWT renovado en caso de 401.
  */
 export async function apiRequestFormStatus(
-  config: FormStatusRequestConfig,
+  config: FormStatusRequestConfig
 ): Promise<ApiActionResult> {
   const withAuth = config.withAuth !== false;
 
   try {
     const res = await executeWithAuthRetry(withAuth, (token) =>
-      doFormRequest(config, token),
+      doFormRequest(config, token)
     );
 
     // Retry en 401
@@ -308,23 +322,58 @@ export async function apiRequestFormStatus(
 
     return { ok: true };
   } catch {
-    return errorResult("Error de conexi\u00f3n. Intenta m\u00e1s tarde.");
+    return errorResult("Error de conexión. Intenta más tarde.");
+  }
+}
+
+/**
+ * Para endpoints que reciben un FormData y retornan datos JSON validados.
+ * Reintenta automáticamente con JWT renovado en caso de 401.
+ */
+export async function apiRequestFormData<TParsed, TResult = TParsed>(
+  config: FormDataRequestConfig<TParsed, TResult>
+): Promise<ApiResult<TResult>> {
+  const withAuth = config.withAuth !== false;
+
+  try {
+    const res = await executeWithAuthRetry(withAuth, (token) =>
+      doFormRequest(config as FormStatusRequestConfig, token)
+    );
+
+    if (!res.ok) {
+      return serverErrorResult(res, config.fallbackMessage);
+    }
+
+    const responseData = await res.json();
+    const parsed = config.responseSchema.safeParse(responseData);
+    if (!parsed.success) {
+      return errorResult("Error en la respuesta del servidor");
+    }
+
+    return {
+      ok: true,
+      data: config.mapData
+        ? config.mapData(parsed.data)
+        : (parsed.data as unknown as TResult),
+    };
+  } catch {
+    return errorResult("Error de conexión. Intenta más tarde.");
   }
 }
 
 /**
  * Para endpoints que devuelven un archivo binario.
  * Lee el nombre y tipo del archivo desde los headers de la respuesta.
- * Reintenta autom\u00e1ticamente con JWT renovado en caso de 401.
+ * Reintenta automáticamente con JWT renovado en caso de 401.
  */
 export async function apiRequestFile(
-  config: FileRequestConfig,
+  config: FileRequestConfig
 ): Promise<ApiFileResult> {
   const withAuth = config.withAuth !== false;
 
   try {
     const res = await executeWithAuthRetry(withAuth, (token) =>
-      doRequest(config, token),
+      doRequest(config, token)
     );
 
     // Retry en 401
@@ -346,6 +395,6 @@ export async function apiRequestFile(
       data: { fileName, contentType, blob },
     };
   } catch {
-    return errorResult("Error de conexi\u00f3n. Intenta m\u00e1s tarde.");
+    return errorResult("Error de conexión. Intenta más tarde.");
   }
 }
