@@ -216,7 +216,7 @@ describe("useHistorialInteraccionesIa", () => {
         id: "confirmed-image-id",
         idDiagrama: diagramaId,
         idUsuario: "user-1",
-        tipo: "IMAGEN",
+        tipo: "VISION_IMAGEN",
         estado: "COMPLETADO",
         entradaUsuario: "diagrama.png",
         respuestaIa: "Diagrama importado exitosamente",
@@ -257,9 +257,47 @@ describe("useHistorialInteraccionesIa", () => {
     );
     expect(result.current.interacciones).toHaveLength(1);
     expect(result.current.interacciones[0].id).toBe("confirmed-image-id");
-    expect(result.current.interacciones[0].tipo).toBe("IMAGEN");
+    expect(result.current.interacciones[0].tipo).toBe("VISION_IMAGEN");
     expect(result.current.interacciones[0].entradaUsuario).toBe("diagrama.png");
     expect(result.current.interacciones[0].respuestaIa).toBe("Diagrama importado exitosamente");
     expect(result.current.enviando).toBe(false);
+  });
+
+  it("desbloquea el editor y muestra mensaje amigable cuando la IA está temporalmente ocupada (503)", async () => {
+    vi.mocked(actions.listarInteraccionesIaAction).mockResolvedValue({
+      ok: true,
+      data: { items: [] },
+    });
+
+    vi.mocked(actions.enviarImagenIaAction).mockResolvedValue({
+      ok: false,
+      statusCode: 503,
+      errors: [
+        "DRAWI no pudo procesar la imagen porque el servicio de IA está temporalmente ocupado. Intenta nuevamente.",
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useHistorialInteraccionesIa(diagramaId)
+    );
+
+    await waitFor(() => {
+      expect(result.current.cargando).toBe(false);
+    });
+
+    const fakeFile = new File(["fake-bytes"], "diagrama.png", { type: "image/png" });
+
+    let exitoso = false;
+    await act(async () => {
+      exitoso = await result.current.enviarImagen(fakeFile);
+    });
+
+    expect(exitoso).toBe(false);
+    expect(result.current.enviando).toBe(false);
+    expect(result.current.error).toBe(
+      "DRAWI no pudo procesar la imagen porque el servicio de IA está temporalmente ocupado. Intenta nuevamente."
+    );
+    // Sin burbuja residual en historial
+    expect(result.current.interacciones).toHaveLength(0);
   });
 });

@@ -352,6 +352,8 @@ export function proyectarEdgesRelacion(
         relacionSeleccionadaId === estructura.idRelacionDestino,
       data: {
         relacion: relacionOrigen,
+        relacionOrigen,
+        relacionDestino,
         estructuraNm: estructura,
         claseIntermedia: intermedia,
       },

@@ -272,13 +272,16 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
           return true;
         } else {
           const mensajeError =
-            res.errors?.[0] || "Error al procesar la imagen con el asistente DRAWI.";
+            res.errors?.[0] ||
+            "DRAWI no pudo procesar la imagen porque el servicio de IA está temporalmente ocupado. Intenta nuevamente.";
           setError(mensajeError);
           return false;
         }
       } catch {
         if (diagramaActualRef.current === currentDiagramId) {
-          setError("Error de red al procesar la imagen con el asistente.");
+          setError(
+            "DRAWI no pudo procesar la imagen porque el servicio de IA está temporalmente ocupado. Intenta nuevamente."
+          );
         }
         return false;
       } finally {

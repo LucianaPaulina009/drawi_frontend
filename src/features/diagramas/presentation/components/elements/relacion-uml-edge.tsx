@@ -36,6 +36,8 @@ export type RelacionUmlEdgeData = {
 export type EstructuraNmUmlEdgeData = RelacionUmlEdgeData & {
   estructuraNm: EstructuraRelacionNm;
   claseIntermedia: Clase;
+  relacionOrigen?: Relacion;
+  relacionDestino?: Relacion;
 };
 
 function internarExtremoEnNodo(
@@ -678,6 +680,8 @@ export const EstructuraNmUmlEdge = memo(function EstructuraNmUmlEdge({
 }: EdgeProps) {
   const edgeData = data as EstructuraNmUmlEdgeData | undefined;
   const relacion = edgeData?.relacion;
+  const relacionOrigen = edgeData?.relacionOrigen ?? edgeData?.relacion;
+  const relacionDestino = edgeData?.relacionDestino;
   const claseIntermedia = edgeData?.claseIntermedia;
   const nodoIntermedio = useInternalNode(claseIntermedia?.id ?? "");
 
@@ -748,8 +752,15 @@ export const EstructuraNmUmlEdge = memo(function EstructuraNmUmlEdge({
     false
   );
 
-  const cardinalidadOrigen = relacion.cardinalidadOrigen?.trim() || "0..*";
-  const cardinalidadDestino = relacion.cardinalidadDestino?.trim() || "0..*";
+  // En una relación N:M, la cardinalidad visible en los extremos conceptuales
+  // A y B corresponde a las relaciones "muchos" hacia la entidad intermedia (o "0..*" por defecto).
+  const cardinalidadOrigen =
+    relacionDestino?.cardinalidadDestino?.trim() ||
+    relacionOrigen?.cardinalidadDestino?.trim() ||
+    "0..*";
+  const cardinalidadDestino =
+    relacionOrigen?.cardinalidadDestino?.trim() ||
+    "0..*";
 
   const handleSeleccion = (event: ReactMouseEvent<SVGPathElement>) => {
     event.stopPropagation();
@@ -806,6 +817,7 @@ export const EstructuraNmUmlEdge = memo(function EstructuraNmUmlEdge({
           style={{
             transform: `translate(-50%, -50%) translate(${sourceLabelPos.x}px,${sourceLabelPos.y}px)`,
           }}
+          data-testid="cardinalidad-origen"
         >
           {cardinalidadOrigen}
         </div>
@@ -814,6 +826,7 @@ export const EstructuraNmUmlEdge = memo(function EstructuraNmUmlEdge({
           style={{
             transform: `translate(-50%, -50%) translate(${targetLabelPos.x}px,${targetLabelPos.y}px)`,
           }}
+          data-testid="cardinalidad-destino"
         >
           {cardinalidadDestino}
         </div>

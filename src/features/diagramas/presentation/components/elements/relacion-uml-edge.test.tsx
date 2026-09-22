@@ -9,11 +9,13 @@ vi.mock("@xyflow/react", async (importOriginal) => {
     EdgeLabelRenderer: ({ children }: { children: React.ReactNode }) => (
       <div data-testid="edge-label-renderer">{children}</div>
     ),
+    useInternalNode: vi.fn().mockReturnValue(null),
   };
 });
 
 import {
   debeMostrarCardinalidades,
+  EstructuraNmUmlEdge,
   obtenerMarcadoresRelacion,
   obtenerNombreVisualTipo,
   obtenerPosicionCardinalidad,
@@ -263,5 +265,84 @@ describe("proyección visual de relaciones UML", () => {
     const botonNombre = screen.getByRole("button", { name: "Supervisa" });
     expect(botonNombre).toBeInTheDocument();
   });
+
+  it("renderiza correctamente las cardinalidades de una relación N:M mostrando muchos a muchos en los extremos", () => {
+    const relacionOrigen: Relacion = {
+      id: "rel-a",
+      idDiagrama: "diag-1",
+      idClaseOrigen: "clase-tabla",
+      idClaseDestino: "clase-intermedia",
+      tipoRelacion: "asociacion",
+      cardinalidadOrigen: "1",
+      cardinalidadDestino: "0..*",
+      conectorOrigen: "right",
+      conectorDestino: "left",
+      referenciasFk: [],
+    };
+
+    const relacionDestino: Relacion = {
+      id: "rel-b",
+      idDiagrama: "diag-1",
+      idClaseOrigen: "clase-hola",
+      idClaseDestino: "clase-intermedia",
+      tipoRelacion: "asociacion",
+      cardinalidadOrigen: "1",
+      cardinalidadDestino: "0..*",
+      conectorOrigen: "left",
+      conectorDestino: "right",
+      referenciasFk: [],
+    };
+
+    render(
+      <svg>
+        <EstructuraNmUmlEdge
+          id="estructura-nm:nm-1"
+          source="clase-tabla"
+          target="clase-hola"
+          sourceX={100}
+          sourceY={200}
+          targetX={500}
+          targetY={200}
+          sourcePosition={Position.Right}
+          targetPosition={Position.Left}
+          data={{
+            relacion: relacionOrigen,
+            relacionOrigen,
+            relacionDestino,
+            estructuraNm: {
+              id: "nm-1",
+              idDiagrama: "diag-1",
+              idClaseOrigen: "clase-tabla",
+              idClaseDestino: "clase-hola",
+              idClaseIntermedia: "clase-intermedia",
+              idRelacionOrigen: "rel-a",
+              idRelacionDestino: "rel-b",
+            },
+            claseIntermedia: {
+              id: "clase-intermedia",
+              idDiagrama: "diag-1",
+              nombre: "Tabla_Hola",
+              posicionX: 300,
+              posicionY: 50,
+              ancho: 220,
+              atributos: [],
+            },
+            seleccionada: false,
+            puedeEditar: true,
+          }}
+        />
+      </svg>
+    );
+
+    const cardOrigen = screen.getByTestId("cardinalidad-origen");
+    const cardDestino = screen.getByTestId("cardinalidad-destino");
+
+    expect(cardOrigen).toBeInTheDocument();
+    expect(cardOrigen.textContent).toBe("0..*");
+
+    expect(cardDestino).toBeInTheDocument();
+    expect(cardDestino.textContent).toBe("0..*");
+  });
 });
+
 
