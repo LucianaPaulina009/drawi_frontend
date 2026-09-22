@@ -138,6 +138,43 @@ describe("interaccionIaRepositoryImpl", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("enviarImagen invoca apiRequestFormData con POST y endpoint /interacciones-ia/imagen", async () => {
+    const mockResponse = {
+      ok: true as const,
+      data: {
+        id: "77777777-7777-7777-7777-777777777777",
+        idDiagrama: "11111111-1111-1111-1111-111111111111",
+        idUsuario: "user-1",
+        tipo: "IMAGEN",
+        estado: "COMPLETADO",
+        entradaUsuario: "Importación de imagen UML: uml.png",
+        respuestaIa: "Se crearon 2 clases.",
+        claveIdempotencia: "key-img-1",
+        creadoEn: "2026-09-20T12:00:00Z",
+      },
+    };
+
+    vi.mocked(apiClient.apiRequestFormData).mockResolvedValue(mockResponse as never);
+
+    const blob = new Blob(["png-bytes"], { type: "image/png" });
+    const result = await interaccionIaRepositoryImpl.enviarImagen(
+      "11111111-1111-1111-1111-111111111111",
+      blob,
+      "key-img-1",
+      "uml.png"
+    );
+
+    expect(apiClient.apiRequestFormData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: expect.stringContaining(
+          "/diagramas/11111111-1111-1111-1111-111111111111/interacciones-ia/imagen"
+        ),
+        method: "POST",
+      })
+    );
+    expect(result.ok).toBe(true);
+  });
+
   it("Zod valida y el mapper convierte correctamente el payload 201 real del backend", () => {
     const backendJson = {
       id: "77777777-7777-7777-7777-777777777777",

@@ -247,10 +247,15 @@ export function AsistenteIaEditor({
     URL.revokeObjectURL(url);
   };
 
-  const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSeleccionarArchivo = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
-    if (file) {
-      asistente.adjuntarImagen(file);
+    if (file && diagramaId) {
+      if (!abierto) {
+        onAbrir();
+      }
+      await historialIa.enviarImagen(file, { nombreArchivo: file.name });
     }
     setModoImagen(false);
     e.target.value = "";

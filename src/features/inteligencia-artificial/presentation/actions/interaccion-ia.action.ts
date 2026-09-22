@@ -137,3 +137,47 @@ export async function transcribirAudioIaAction(
     duracion
   );
 }
+
+export async function enviarImagenIaAction(
+  idDiagrama: string,
+  formData: FormData
+): Promise<ApiResult<InteraccionIa>> {
+  const parsedDiagrama = IdDiagramaParamSchema.safeParse(idDiagrama);
+  if (!parsedDiagrama.success) {
+    return {
+      ok: false,
+      statusCode: 400,
+      errors: ["Identificador de diagrama inválido."],
+    };
+  }
+
+  const imageFile = formData.get("imagen");
+  if (!imageFile || !(imageFile instanceof Blob)) {
+    return {
+      ok: false,
+      statusCode: 400,
+      errors: ["No se proporcionó un archivo de imagen válido."],
+    };
+  }
+
+  const claveIdempotenciaRaw = formData.get("clave_idempotencia");
+  const claveIdempotencia =
+    typeof claveIdempotenciaRaw === "string" && claveIdempotenciaRaw.trim()
+      ? claveIdempotenciaRaw.trim()
+      : crypto.randomUUID();
+
+  const nombreArchivoRaw = formData.get("nombre_archivo");
+  const nombreArchivo =
+    typeof nombreArchivoRaw === "string" && nombreArchivoRaw.trim()
+      ? nombreArchivoRaw.trim()
+      : imageFile instanceof File
+      ? imageFile.name
+      : "diagrama.png";
+
+  return interaccionIaRepositoryImpl.enviarImagen(
+    parsedDiagrama.data,
+    imageFile,
+    claveIdempotencia,
+    nombreArchivo
+  );
+}

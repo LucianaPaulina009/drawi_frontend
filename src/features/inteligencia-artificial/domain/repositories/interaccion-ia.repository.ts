@@ -26,6 +26,13 @@ export interface InteraccionIaRepository {
     duracionSegundos?: number
   ): Promise<ApiResult<InteraccionIa>>;
 
+  enviarImagen(
+    idDiagrama: string,
+    blob: Blob,
+    claveIdempotencia: string,
+    nombreArchivo?: string
+  ): Promise<ApiResult<InteraccionIa>>;
+
   transcribirAudio(
     idDiagrama: string,
     blob: Blob,

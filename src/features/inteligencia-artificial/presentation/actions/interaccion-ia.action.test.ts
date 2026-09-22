@@ -3,17 +3,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockListarInteracciones = vi.fn();
 const mockEnviarMensaje = vi.fn();
 const mockEnviarAudio = vi.fn();
+const mockEnviarImagen = vi.fn();
 
 vi.mock("../../infrastructure/repositories/interaccion-ia.repository", () => ({
   interaccionIaRepositoryImpl: {
     listarInteracciones: (...args: unknown[]) => mockListarInteracciones(...args),
     enviarMensaje: (...args: unknown[]) => mockEnviarMensaje(...args),
     enviarAudio: (...args: unknown[]) => mockEnviarAudio(...args),
+    enviarImagen: (...args: unknown[]) => mockEnviarImagen(...args),
   },
 }));
 
 import {
   enviarAudioIaAction,
+  enviarImagenIaAction,
   enviarMensajeIaAction,
   listarInteraccionesIaAction,
 } from "./interaccion-ia.action";
@@ -144,6 +147,49 @@ describe("interaccion-ia actions", () => {
         "key-123",
         "audio/webm",
         3
+      );
+    });
+  });
+
+  describe("enviarImagenIaAction", () => {
+    it("falla con 400 si no se adjunta archivo de imagen", async () => {
+      const formData = new FormData();
+      const res = await enviarImagenIaAction("11111111-1111-1111-1111-111111111111", formData);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.statusCode).toBe(400);
+      }
+      expect(mockEnviarImagen).not.toHaveBeenCalled();
+    });
+
+    it("delega al repositorio enviando el archivo de imagen y la clave de idempotencia", async () => {
+      mockEnviarImagen.mockResolvedValue({
+        ok: true,
+        data: {
+          id: "image-interaction-id",
+          idDiagrama: "11111111-1111-1111-1111-111111111111",
+          idUsuario: "user-1",
+          tipo: "IMAGEN",
+          estado: "COMPLETADO",
+          entradaUsuario: "diagrama.png",
+          respuestaIa: "Diagrama reconocido exitosamente",
+          claveIdempotencia: "img-key-123",
+          creadoEn: "2026-09-22T12:00:00Z",
+        },
+      });
+
+      const formData = new FormData();
+      const file = new File(["fake-image-bytes"], "diagrama.png", { type: "image/png" });
+      formData.append("imagen", file, "diagrama.png");
+      formData.append("clave_idempotencia", "img-key-123");
+
+      const res = await enviarImagenIaAction("11111111-1111-1111-1111-111111111111", formData);
+      expect(res.ok).toBe(true);
+      expect(mockEnviarImagen).toHaveBeenCalledWith(
+        "11111111-1111-1111-1111-111111111111",
+        expect.any(File),
+        "img-key-123",
+        "diagrama.png"
       );
     });
   });

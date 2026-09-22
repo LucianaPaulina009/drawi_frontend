@@ -99,6 +99,27 @@ export const interaccionIaRepositoryImpl: InteraccionIaRepository = {
     });
   },
 
+  enviarImagen(
+    idDiagrama: string,
+    blob: Blob,
+    claveIdempotencia: string,
+    nombreArchivo?: string
+  ): Promise<ApiResult<InteraccionIa>> {
+    const formData = new FormData();
+    const fileName = nombreArchivo || "diagrama.png";
+    formData.append("imagen", blob, fileName);
+    formData.append("clave_idempotencia", claveIdempotencia);
+
+    return apiRequestFormData({
+      url: `${BASE_URL}/${idDiagrama}/interacciones-ia/imagen`,
+      method: "POST",
+      body: formData,
+      responseSchema: InteraccionIaResponseSchema,
+      mapData: interaccionIaMapper.toDomain,
+      fallbackMessage: "Error al procesar la imagen con el asistente DRAWI.",
+    });
+  },
+
   transcribirAudio(
     idDiagrama: string,
     blob: Blob,

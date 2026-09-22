@@ -7,6 +7,7 @@ vi.mock("../actions/interaccion-ia.action", () => ({
   listarInteraccionesIaAction: vi.fn(),
   enviarMensajeIaAction: vi.fn(),
   enviarAudioIaAction: vi.fn(),
+  enviarImagenIaAction: vi.fn(),
 }));
 
 describe("useHistorialInteraccionesIa", () => {
@@ -199,6 +200,66 @@ describe("useHistorialInteraccionesIa", () => {
     expect(result.current.interacciones[0].tipo).toBe("VOZ_AUDIO");
     expect(result.current.interacciones[0].entradaUsuario).toBe("Crea una clase Producto");
     expect(result.current.interacciones[0].respuestaIa).toBe("Clase Producto creada exitosamente");
+    expect(result.current.enviando).toBe(false);
+  });
+
+  it("envía imagen en una sola interacción sin burbujas optimistas intermedias", async () => {
+    vi.mocked(actions.listarInteraccionesIaAction).mockResolvedValue({
+      ok: true,
+      data: { items: [] },
+    });
+
+    const imageKey = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    vi.mocked(actions.enviarImagenIaAction).mockResolvedValue({
+      ok: true,
+      data: {
+        id: "confirmed-image-id",
+        idDiagrama: diagramaId,
+        idUsuario: "user-1",
+        tipo: "IMAGEN",
+        estado: "COMPLETADO",
+        entradaUsuario: "diagrama.png",
+        respuestaIa: "Diagrama importado exitosamente",
+        claveIdempotencia: imageKey,
+        creadoEn: "2026-09-22T12:00:00Z",
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useHistorialInteraccionesIa(diagramaId)
+    );
+
+    await waitFor(() => {
+      expect(result.current.cargando).toBe(false);
+    });
+
+    const fakeFile = new File(["fake-image-bytes"], "diagrama.png", { type: "image/png" });
+
+    let envioPromesa: Promise<boolean>;
+    act(() => {
+      envioPromesa = result.current.enviarImagen(fakeFile, {
+        claveIdempotencia: imageKey,
+      });
+    });
+
+    // Durante el envío de imagen, NO se añade burbuja provisional al historial
+    expect(result.current.interacciones).toHaveLength(0);
+    expect(result.current.enviando).toBe(true);
+
+    await act(async () => {
+      const exitoso = await envioPromesa;
+      expect(exitoso).toBe(true);
+    });
+
+    expect(actions.enviarImagenIaAction).toHaveBeenCalledWith(
+      diagramaId,
+      expect.any(FormData)
+    );
+    expect(result.current.interacciones).toHaveLength(1);
+    expect(result.current.interacciones[0].id).toBe("confirmed-image-id");
+    expect(result.current.interacciones[0].tipo).toBe("IMAGEN");
+    expect(result.current.interacciones[0].entradaUsuario).toBe("diagrama.png");
+    expect(result.current.interacciones[0].respuestaIa).toBe("Diagrama importado exitosamente");
     expect(result.current.enviando).toBe(false);
   });
 });

@@ -146,10 +146,16 @@ export function PanelChatDrawi({
     }
   };
 
-  const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSeleccionarArchivo = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
     if (file) {
-      adjuntarImagen(file);
+      if (historialIa) {
+        await historialIa.enviarImagen(file, { nombreArchivo: file.name });
+      } else {
+        adjuntarImagen(file);
+      }
     }
     e.target.value = "";
   };

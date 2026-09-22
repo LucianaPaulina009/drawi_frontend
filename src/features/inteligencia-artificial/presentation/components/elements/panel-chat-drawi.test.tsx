@@ -53,6 +53,7 @@ describe("PanelChatDrawi", () => {
     error: null,
     enviarMensaje: vi.fn(async () => true),
     enviarAudio: vi.fn(async () => true),
+    enviarImagen: vi.fn(async () => true),
     cargarHistorial: vi.fn(async () => {}),
     limpiarError: vi.fn(),
     ...overrides,

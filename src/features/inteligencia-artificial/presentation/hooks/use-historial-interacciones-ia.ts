@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { InteraccionIa } from "../../domain/entities/interaccion-ia.entity";
 import {
   enviarAudioIaAction,
+  enviarImagenIaAction,
   enviarMensajeIaAction,
   listarInteraccionesIaAction,
 } from "../actions/interaccion-ia.action";
@@ -230,6 +231,65 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
     [diagramaId, enviando]
   );
 
+  // Enviar imagen de diagrama UML en una sola interacción
+  const enviarImagen = useCallback(
+    async (
+      imagenBlob: Blob,
+      opciones?: {
+        claveIdempotencia?: string;
+        nombreArchivo?: string;
+      }
+    ): Promise<boolean> => {
+      if (!imagenBlob || imagenBlob.size === 0 || !diagramaId || enviando) {
+        return false;
+      }
+
+      const currentDiagramId = diagramaId;
+      const claveIdempotencia =
+        opciones?.claveIdempotencia || crypto.randomUUID();
+      const nombreArchivo =
+        opciones?.nombreArchivo ||
+        (imagenBlob instanceof File ? imagenBlob.name : "diagrama.png");
+
+      setEnviando(true);
+      setError(null);
+
+      try {
+        const formData = new FormData();
+        formData.append("imagen", imagenBlob, nombreArchivo);
+        formData.append("clave_idempotencia", claveIdempotencia);
+        formData.append("nombre_archivo", nombreArchivo);
+
+        const res = await enviarImagenIaAction(currentDiagramId, formData);
+
+        // Descartar si el diagrama cambió durante el procesamiento
+        if (diagramaActualRef.current !== currentDiagramId) {
+          return false;
+        }
+
+        if (res.ok) {
+          setInteracciones((prev) => [...prev, res.data]);
+          return true;
+        } else {
+          const mensajeError =
+            res.errors?.[0] || "Error al procesar la imagen con el asistente DRAWI.";
+          setError(mensajeError);
+          return false;
+        }
+      } catch {
+        if (diagramaActualRef.current === currentDiagramId) {
+          setError("Error de red al procesar la imagen con el asistente.");
+        }
+        return false;
+      } finally {
+        if (diagramaActualRef.current === currentDiagramId) {
+          setEnviando(false);
+        }
+      }
+    },
+    [diagramaId, enviando]
+  );
+
   const limpiarError = useCallback(() => {
     setError(null);
   }, []);
@@ -241,6 +301,7 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
     error,
     enviarMensaje,
     enviarAudio,
+    enviarImagen,
     cargarHistorial,
     limpiarError,
   };

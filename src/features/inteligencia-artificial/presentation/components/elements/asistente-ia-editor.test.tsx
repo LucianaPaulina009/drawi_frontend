@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AsistenteIaEditor } from "./asistente-ia-editor";
-import * as transcribirActionModule from "../../actions/interaccion-ia.action";
 
 const mockIniciarGrabacion = vi.fn();
 const mockDetenerGrabacion = vi.fn();
@@ -26,6 +25,7 @@ vi.mock("../../hooks/use-grabacion-audio", () => ({
 
 const mockEnviarMensaje = vi.fn();
 const mockEnviarAudio = vi.fn();
+const mockEnviarImagen = vi.fn();
 let mockHistorialEnviando = false;
 let mockHistorialError: string | null = null;
 
@@ -37,6 +37,7 @@ vi.mock("../../hooks/use-historial-interacciones-ia", () => ({
     error: mockHistorialError,
     enviarMensaje: mockEnviarMensaje,
     enviarAudio: mockEnviarAudio,
+    enviarImagen: mockEnviarImagen,
     cargarHistorial: vi.fn(),
     limpiarError: vi.fn(),
   }),
