@@ -20,7 +20,13 @@ export async function proxy(request: NextRequest) {
     pathname === "/unirse" ||
     pathname.startsWith("/unirse/");
 
-  if (pathname === "/" || esRutaUnirse) {
+  const esRutaManual =
+    pathname === "/manual-de-usuario" ||
+    pathname.startsWith("/manual-de-usuario/") ||
+    pathname === "/manual-de-uso" ||
+    pathname.startsWith("/manual-de-uso/");
+
+  if (pathname === "/" || esRutaUnirse || esRutaManual) {
     return NextResponse.next();
   }
 

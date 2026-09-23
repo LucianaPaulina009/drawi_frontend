@@ -71,21 +71,19 @@ export function ModalImportarEnterpriseArchitect({
 
       if (!res.ok) {
         const mensaje =
-          res.error.error || "No se pudo importar el archivo de Enterprise Architect.";
+          res.error.errors?.[0] || "No se pudo importar el archivo de Enterprise Architect.";
         setErrorLocal(mensaje);
         appToast.error("Error al importar", mensaje);
         return;
       }
 
       appToast.success(
-        "Importación exitosa",
-        `Se importaron ${res.data.clasesImportadas} clases y ${res.data.relacionesImportadas} relaciones.`
+        `Importación exitosa: Se importaron ${res.data.clasesImportadas} clases y ${res.data.relacionesImportadas} relaciones.`
       );
 
       if (res.data.advertencias && res.data.advertencias.length > 0) {
         appToast.info(
-          "Avisos de importación",
-          res.data.advertencias.slice(0, 2).join(" ")
+          `Avisos de importación: ${res.data.advertencias.slice(0, 2).join(" ")}`
         );
       }
 

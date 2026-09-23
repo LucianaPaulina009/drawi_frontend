@@ -58,8 +58,8 @@ export async function importarDiagramaEaAction(
       ok: false,
       error: {
         ok: false,
-        error: "Solo se admiten archivos .xml o .xmi de Enterprise Architect.",
-        status: 400,
+        statusCode: 400,
+        errors: ["Solo se admiten archivos .xml o .xmi de Enterprise Architect."],
         code: "FORMATO_NO_SOPORTADO",
       },
     };
@@ -70,12 +70,13 @@ export async function importarDiagramaEaAction(
       ok: false,
       error: {
         ok: false,
-        error: "El archivo supera el tamaño máximo permitido de 10 MB.",
-        status: 413,
+        statusCode: 413,
+        errors: ["El archivo supera el tamaño máximo permitido de 10 MB."],
         code: "ARCHIVO_EXCEDE_TAMANO_MAXIMO",
       },
     };
   }
+
 
   const resultado = await importarDiagramaEa(idDiagrama, idProyecto, archivo);
 

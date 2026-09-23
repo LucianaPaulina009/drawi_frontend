@@ -5,6 +5,7 @@ import { FieldSeparator } from "@/components/ui/field";
 import SocialSignInButtons from "@/features/auth/presentation/components/elements/social-sign-in-buttons";
 import { AuthLink } from "@/features/auth/presentation/components/elements/auth-link";
 import AuthErrorNotifier from "@/features/auth/presentation/components/elements/auth-error-notifier";
+import { BotonAyudaFlotante } from "@/features/manual-usuario/presentation/components/elements/boton-ayuda-flotante";
 
 function LoginShowcase() {
   return (
@@ -245,6 +246,9 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      {/* Burbujita flotante de ayuda en la esquina inferior derecha */}
+      <BotonAyudaFlotante />
     </AuthLayout>
   );
 }

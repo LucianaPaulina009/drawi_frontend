@@ -6,6 +6,7 @@ import { Loader2, Users } from "lucide-react";
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
 import type { MiembroProyecto } from "../../../domain/entities/colaborador.entity";
 import { listarMiembrosAction } from "../../actions/colaborador.action";
+import { colaboracionCache } from "../../cache/colaboracion-cache";
 import { ItemMiembroFila } from "./item-miembro-fila";
 
 interface ListaMiembrosModalProps {
@@ -18,21 +19,39 @@ export function ListaMiembrosModal({
   proyectoId,
   esUsuarioPropietario,
 }: ListaMiembrosModalProps) {
-  const [miembros, setMiembros] = useState<MiembroProyecto[]>([]);
-  const [cargando, setCargando] = useState<boolean>(true);
+  const cached = colaboracionCache.getMiembros(proyectoId);
+  const [miembros, setMiembros] = useState<MiembroProyecto[]>(
+    cached !== undefined ? cached : []
+  );
+  const [cargando, setCargando] = useState<boolean>(cached === undefined);
   const [, startTransition] = useTransition();
 
-  const cargarMiembros = () => {
+  const cargarMiembros = (forzar = false) => {
+    if (forzar) {
+      colaboracionCache.invalidar(proyectoId);
+    } else if (colaboracionCache.hasMiembros(proyectoId)) {
+      const data = colaboracionCache.getMiembros(proyectoId);
+      if (data) {
+        setMiembros(data);
+        setCargando(false);
+        return;
+      }
+    }
+
+    setCargando(true);
     startTransition(async () => {
       try {
         const res = await listarMiembrosAction(proyectoId);
         if (res.ok) {
           setMiembros(res.data);
-        } else {
+          colaboracionCache.setMiembros(proyectoId, res.data);
+        } else if (cached === undefined) {
           appToast.error("Error", res.errors?.[0] || "No se pudo cargar la lista de miembros.");
         }
       } catch {
-        appToast.error("Error", "Ocurrió un error al consultar los miembros.");
+        if (cached === undefined) {
+          appToast.error("Error", "Ocurrió un error al consultar los miembros.");
+        }
       } finally {
         setCargando(false);
       }
@@ -40,9 +59,10 @@ export function ListaMiembrosModal({
   };
 
   useEffect(() => {
-    cargarMiembros();
+    cargarMiembros(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proyectoId]);
+
 
   if (cargando) {
     return (
@@ -72,9 +92,10 @@ export function ListaMiembrosModal({
           proyectoId={proyectoId}
           miembro={miembro}
           esUsuarioPropietario={esUsuarioPropietario}
-          onMiembroActualizado={cargarMiembros}
+          onMiembroActualizado={() => cargarMiembros(true)}
         />
       ))}
+
     </div>
   );
 }

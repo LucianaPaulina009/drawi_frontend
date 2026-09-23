@@ -163,26 +163,31 @@ export function ItemProyecto({
               </span>
             </DropdownMenuItem>
 
-            <DropdownMenuItem
-              className="cursor-pointer gap-2.5 px-3.5 py-2 text-xs font-medium"
-              onClick={() => onEditar?.(proyecto)}
-            >
-              <Pencil className="h-4 w-4 text-gray-500" />
-              <span>Editar información</span>
-            </DropdownMenuItem>
+            {proyecto.esDueno !== false ? (
+              <>
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2.5 px-3.5 py-2 text-xs font-medium"
+                  onClick={() => onEditar?.(proyecto)}
+                >
+                  <Pencil className="h-4 w-4 text-gray-500" />
+                  <span>Editar información</span>
+                </DropdownMenuItem>
 
-            <DropdownMenuSeparator className="my-1 border-gray-100" />
+                <DropdownMenuSeparator className="my-1 border-gray-100" />
 
-            <DropdownMenuItem
-              className="cursor-pointer gap-2.5 px-3.5 py-2 text-xs font-medium text-destructive focus:bg-destructive/10 focus:text-destructive"
-              onClick={() => onEliminar?.(proyecto)}
-            >
-              <Trash2 className="h-4 w-4 text-destructive" />
-              <span>Eliminar</span>
-            </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2.5 px-3.5 py-2 text-xs font-medium text-destructive focus:bg-destructive/10 focus:text-destructive"
+                  onClick={() => onEliminar?.(proyecto)}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                  <span>Eliminar</span>
+                </DropdownMenuItem>
+              </>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
     </div>
+
   );
 }

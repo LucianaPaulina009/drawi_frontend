@@ -54,8 +54,10 @@ export const proyectoMapper = {
       esFavorito: raw.es_favorito,
       slug: raw.slug,
       propietarioId: raw.propietario_id,
+      esDueno: raw.es_dueno ?? true,
     };
   },
+
 
   toListaProyectos(
     raw: z.infer<typeof ListaProyectosResponseSchema>

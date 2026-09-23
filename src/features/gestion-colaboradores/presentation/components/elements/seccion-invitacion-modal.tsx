@@ -6,6 +6,7 @@ import { Check, Copy, Link as LinkIcon, Loader2, ShieldAlert } from "lucide-reac
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
 import type { Invitacion } from "../../../domain/entities/invitacion.entity";
 import { obtenerInvitacionAction } from "../../actions/invitacion.action";
+import { colaboracionCache } from "../../cache/colaboracion-cache";
 
 interface SeccionInvitacionModalProps {
   proyectoId: string;
@@ -16,8 +17,13 @@ export function SeccionInvitacionModal({
   proyectoId,
   esUsuarioPropietario,
 }: SeccionInvitacionModalProps) {
-  const [invitacion, setInvitacion] = useState<Invitacion | null>(null);
-  const [cargando, setCargando] = useState<boolean>(esUsuarioPropietario);
+  const cached = colaboracionCache.getInvitacion(proyectoId);
+  const [invitacion, setInvitacion] = useState<Invitacion | null>(
+    cached !== undefined ? cached : null
+  );
+  const [cargando, setCargando] = useState<boolean>(
+    esUsuarioPropietario && cached === undefined
+  );
   const [copiado, setCopiado] = useState<boolean>(false);
   const [, startTransition] = useTransition();
 
@@ -26,24 +32,53 @@ export function SeccionInvitacionModal({
       return;
     }
 
-    startTransition(async () => {
-      try {
-        const res = await obtenerInvitacionAction(proyectoId);
-        if (res.ok) {
-          setInvitacion(res.data);
-        } else {
-          appToast.error(
-            "Error",
-            res.errors?.[0] || "No se pudo obtener el enlace de invitación."
-          );
-        }
-      } catch {
-        appToast.error("Error", "Ocurrió un error al obtener la invitación.");
-      } finally {
+    // Si ya existe la invitación en la caché en memoria, no realizamos petición POST
+    if (colaboracionCache.hasInvitacion(proyectoId)) {
+      const data = colaboracionCache.getInvitacion(proyectoId);
+      setInvitacion(data !== undefined ? data : null);
+      setCargando(false);
+      return;
+    }
+
+    // Si ya hay una solicitud en curso para este proyecto, reutilizamos la misma promesa
+    const promesaEnCurso = colaboracionCache.getPromesaInvitacion(proyectoId);
+    if (promesaEnCurso) {
+      promesaEnCurso.then((data) => {
+        setInvitacion(data);
         setCargando(false);
-      }
+      });
+      return;
+    }
+
+    setCargando(true);
+    startTransition(async () => {
+      const promesa = (async () => {
+        try {
+          const res = await obtenerInvitacionAction(proyectoId);
+          if (res.ok) {
+            colaboracionCache.setInvitacion(proyectoId, res.data);
+            return res.data;
+          } else {
+            appToast.error(
+              "Error",
+              res.errors?.[0] || "No se pudo obtener el enlace de invitación."
+            );
+            return null;
+          }
+        } catch {
+          appToast.error("Error", "Ocurrió un error al obtener la invitación.");
+          return null;
+        } finally {
+          setCargando(false);
+        }
+      })();
+
+      colaboracionCache.setPromesaInvitacion(proyectoId, promesa);
+      const resultado = await promesa;
+      setInvitacion(resultado);
     });
   }, [proyectoId, esUsuarioPropietario]);
+
 
   const enlaceCompleto =
     invitacion && typeof window !== "undefined"

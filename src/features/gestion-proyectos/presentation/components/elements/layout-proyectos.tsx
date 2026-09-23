@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTransition, type ReactNode } from "react";
-import { Folder, LogOut, Plus, Star } from "lucide-react";
+import { Folder, HelpCircle, LogOut, Plus, Star } from "lucide-react";
 
 import { Spinner } from "@/components/ui/spinner";
 import { clearJWT } from "@/features/shared/infrastructure/http/jwt-manager";
@@ -141,6 +141,16 @@ export function LayoutProyectos({ children }: LayoutProyectosProps) {
             <Star
               className={cn("h-5 w-5", esFavoritos && "fill-current")}
             />
+          </Link>
+
+          {/* Enlace: Manual de usuario */}
+          <Link
+            href="/manual-de-usuario"
+            className="flex h-10 w-10 items-center justify-center rounded-2xl text-gray-400 transition duration-150 hover:bg-white/5 hover:text-white focus:outline-none"
+            title="Manual de usuario"
+            aria-label="Manual de usuario"
+          >
+            <HelpCircle className="h-5 w-5" />
           </Link>
         </nav>
 

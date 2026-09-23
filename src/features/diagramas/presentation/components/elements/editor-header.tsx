@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
@@ -96,13 +97,12 @@ export function EditorHeader({
       const res = await exportarDiagramaEaAction(diagramaActivoId, proyecto.id);
       if (res.ok) {
         appToast.success(
-          "Exportación completada",
-          `Se descargó el archivo ${res.fileName}`
+          `Exportación completada: se descargó ${res.fileName}`
         );
       } else {
         appToast.error(
           "Error al exportar",
-          res.error.error || "No se pudo exportar a Enterprise Architect."
+          res.error.errors?.[0] || "No se pudo exportar a Enterprise Architect."
         );
       }
     } catch {
@@ -378,14 +378,16 @@ export function EditorHeader({
         <EstadoSincronizacionEditor className="shrink-0" />
 
         {/* Ayuda */}
-        <button
-          type="button"
+        <Link
+          href="/manual-de-usuario"
+          target="_blank"
+          rel="noopener noreferrer"
           className="flex h-9 w-9 items-center justify-center rounded-xl text-[#475569] transition-colors hover:bg-slate-100 hover:text-[#0f172a]"
-          title="Ayuda"
-          aria-label="Ayuda"
+          title="Manual de usuario"
+          aria-label="Manual de usuario"
         >
           <HelpCircle className="h-4 w-4" />
-        </button>
+        </Link>
 
         {/* Comentarios */}
         <button

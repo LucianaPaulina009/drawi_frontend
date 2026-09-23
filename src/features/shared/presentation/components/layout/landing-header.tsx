@@ -11,6 +11,9 @@ export function LandingHeader() {
 
         <nav className="flex items-center gap-2">
           <Button variant="ghost" size="sm" asChild>
+            <Link href="/manual-de-usuario">Manual de usuario</Link>
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
             <Link href="/auth/login">Iniciar sesión</Link>
           </Button>
           <Button size="sm" asChild>

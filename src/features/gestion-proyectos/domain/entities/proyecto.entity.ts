@@ -23,7 +23,9 @@ export interface Proyecto {
   esFavorito: boolean;
   slug: string;
   propietarioId?: string;
+  esDueno: boolean;
 }
+
 
 export interface ActualizarProyectoData {
   nombre?: string;
