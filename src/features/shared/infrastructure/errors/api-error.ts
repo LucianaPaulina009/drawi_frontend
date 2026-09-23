@@ -75,6 +75,28 @@ export async function serverErrorResult(
   const body = await parseResponseBody(res);
   const statusCode = res.status;
 
+  const rawHeaderChat = res.headers?.get?.("x-mensaje-chat");
+  let mensajeChat: string | undefined = undefined;
+  if (rawHeaderChat) {
+    try {
+      mensajeChat = decodeURIComponent(rawHeaderChat);
+    } catch {
+      mensajeChat = rawHeaderChat;
+    }
+  }
+
+  const rawBodyObj =
+    body && typeof body === "object" ? (body as Record<string, unknown>) : null;
+  if (!mensajeChat && rawBodyObj && typeof rawBodyObj["mensaje_chat"] === "string") {
+    mensajeChat = rawBodyObj["mensaje_chat"] as string;
+  }
+
+  const interaccionId =
+    res.headers?.get?.("x-interaccion-id") ||
+    (rawBodyObj && typeof rawBodyObj["interaccion_id"] === "string"
+      ? (rawBodyObj["interaccion_id"] as string)
+      : undefined);
+
   const validationErrors = activeBackendAdapter.parseValidationErrors(body);
   if (validationErrors) {
     return {
@@ -82,6 +104,8 @@ export async function serverErrorResult(
       statusCode,
       validationErrors,
       errors: flattenValidationErrors(validationErrors),
+      mensajeChat,
+      interaccionId,
     };
   }
 
@@ -92,10 +116,12 @@ export async function serverErrorResult(
       statusCode,
       code: parsedErrors.code,
       errors: parsedErrors.errors,
+      mensajeChat,
+      interaccionId,
     };
   }
 
-  return { ...errorResult(fallbackMessage), statusCode };
+  return { ...errorResult(fallbackMessage), statusCode, mensajeChat, interaccionId };
 }
 
 // ─── Utilidad auxiliar ───────────────────────────────────────────────────────

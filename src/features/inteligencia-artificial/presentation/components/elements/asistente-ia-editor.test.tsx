@@ -26,6 +26,8 @@ vi.mock("../../hooks/use-grabacion-audio", () => ({
 const mockEnviarMensaje = vi.fn();
 const mockEnviarAudio = vi.fn();
 const mockEnviarImagen = vi.fn();
+const mockCargarHistorial = vi.fn();
+const mockAgregarInteraccion = vi.fn();
 let mockHistorialEnviando = false;
 let mockHistorialError: string | null = null;
 
@@ -38,9 +40,44 @@ vi.mock("../../hooks/use-historial-interacciones-ia", () => ({
     enviarMensaje: mockEnviarMensaje,
     enviarAudio: mockEnviarAudio,
     enviarImagen: mockEnviarImagen,
-    cargarHistorial: vi.fn(),
+    agregarInteraccion: mockAgregarInteraccion,
+    cargarHistorial: mockCargarHistorial,
     limpiarError: vi.fn(),
   }),
+}));
+
+const mockGenerarBackend = vi.fn().mockResolvedValue(true);
+
+vi.mock("@/features/generacion-backend/presentation/hooks/use-generacion-backend", () => ({
+  useGeneracionBackend: (options?: {
+    onResultado?: (res: {
+      ok: boolean;
+      mensajeChat?: string;
+      interaccionId?: string;
+    }) => void;
+  }) => {
+    return {
+      estado: "idle",
+      errorMensaje: null,
+      erroresDetalle: [],
+      nombreArchivoDescargado: null,
+      estaGenerando: false,
+      ultimoMensajeChat: null,
+      ultimaInteraccionId: null,
+      generarBackend: vi.fn(async (diagramaId: string) => {
+        const ok = await mockGenerarBackend(diagramaId);
+        if (ok) {
+          options?.onResultado?.({
+            ok: true,
+            mensajeChat: "Backend generado correctamente.",
+            interaccionId: "int-gen-ok",
+          });
+        }
+        return ok;
+      }),
+      reiniciar: vi.fn(),
+    };
+  },
 }));
 
 describe("AsistenteIaEditor", () => {
@@ -219,5 +256,72 @@ describe("AsistenteIaEditor", () => {
     );
 
     expect(mockLimpiarRecursos).toHaveBeenCalled();
+  });
+
+  it("al solicitar generar backend abre el chat e incrusta sigilosamente el mensaje en el historial sin revalidar", async () => {
+    const onAbrir = vi.fn();
+    mockGenerarBackend.mockResolvedValue(true);
+
+    render(
+      <AsistenteIaEditor
+        diagramaId="diag-1"
+        abierto={false}
+        onAbrir={onAbrir}
+        onCerrar={vi.fn()}
+      />
+    );
+
+    // Abrir menú de la mascota y presionar Generar Backend
+    const botonMascota = screen.getByRole("button", { name: "Abrir asistente de IA DRAWI" });
+    fireEvent.click(botonMascota);
+
+    const botonGenerar = screen.getByRole("menuitem", { name: "Generar backend" });
+    fireEvent.click(botonGenerar);
+
+    await waitFor(() => {
+      expect(onAbrir).toHaveBeenCalled();
+      expect(mockGenerarBackend).toHaveBeenCalledWith("diag-1");
+      expect(mockAgregarInteraccion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tipo: "GENERACION_BACKEND",
+          estado: "COMPLETADO",
+          entradaUsuario: "",
+          respuestaIa: "Backend generado correctamente.",
+        })
+      );
+      expect(mockCargarHistorial).not.toHaveBeenCalled();
+    });
+  });
+
+  it("agrega interacción de error seguro si ocurre una excepción de red al generar backend", async () => {
+    const onAbrir = vi.fn();
+    mockGenerarBackend.mockRejectedValue(new Error("Network Error"));
+
+    render(
+      <AsistenteIaEditor
+        diagramaId="diag-1"
+        abierto={false}
+        onAbrir={onAbrir}
+        onCerrar={vi.fn()}
+      />
+    );
+
+    const botonMascota = screen.getByRole("button", { name: "Abrir asistente de IA DRAWI" });
+    fireEvent.click(botonMascota);
+
+    const botonGenerar = screen.getByRole("menuitem", { name: "Generar backend" });
+    fireEvent.click(botonGenerar);
+
+    await waitFor(() => {
+      expect(mockAgregarInteraccion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tipo: "GENERACION_BACKEND",
+          estado: "ERROR",
+          entradaUsuario: "",
+          respuestaIa:
+            "No se pudo generar el backend por un error técnico. Inténtalo nuevamente.",
+        })
+      );
+    });
   });
 });

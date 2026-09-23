@@ -51,7 +51,7 @@ export interface MascotaDrawiProps {
   onSubirImagen?: () => void;
   onGrabarAudio?: () => void;
   onDescartarAudio?: () => void;
-  onGenerarBackend?: () => void;
+  onGenerarBackend?: () => Promise<boolean> | boolean | void;
   modoAudioExterno?: boolean;
   modoImagenExterno?: boolean;
   className?: string;
@@ -206,9 +206,22 @@ export function MascotaDrawi({
       setIsMenuOpen(false);
       setMode("idle");
       setActiveActionToast("Generando archivo backend...");
-      setTimeout(() => setActiveActionToast(null), 2500);
       if (onGenerarBackend) {
-        onGenerarBackend();
+        Promise.resolve(onGenerarBackend())
+          .then((resultado) => {
+            if (resultado === true) {
+              setActiveActionToast("Backend generado correctamente.");
+            } else if (resultado === false) {
+              setActiveActionToast("Se encontraron errores en el diagrama.");
+            }
+            setTimeout(() => setActiveActionToast(null), 2500);
+          })
+          .catch(() => {
+            setActiveActionToast("Se encontraron errores en el diagrama.");
+            setTimeout(() => setActiveActionToast(null), 2500);
+          });
+      } else {
+        setTimeout(() => setActiveActionToast(null), 2500);
       }
     } else if (id === "chat") {
       setIsMenuOpen(false);

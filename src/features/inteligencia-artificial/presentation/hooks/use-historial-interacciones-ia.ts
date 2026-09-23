@@ -12,6 +12,9 @@ import {
 export function useHistorialInteraccionesIa(diagramaId: string | null) {
   const [interacciones, setInteracciones] = useState<InteraccionIa[]>([]);
   const [cargando, setCargando] = useState(false);
+  const [cargandoMas, setCargandoMas] = useState(false);
+  const [hayMas, setHayMas] = useState(false);
+  const [offset, setOffset] = useState(0);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,10 +24,12 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
     diagramaActualRef.current = diagramaId;
   }, [diagramaId]);
 
-  // Cargar historial al cambiar o fijar el diagrama
+  // Cargar historial al cambiar o fijar el diagrama (primeros 5)
   const cargarHistorial = useCallback(async () => {
     if (!diagramaId) {
       setInteracciones([]);
+      setHayMas(false);
+      setOffset(0);
       setError(null);
       return;
     }
@@ -34,7 +39,10 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
     setError(null);
 
     try {
-      const res = await listarInteraccionesIaAction(currentDiagramId);
+      const res = await listarInteraccionesIaAction(currentDiagramId, {
+        limite: 5,
+        offset: 0,
+      });
       // Descartar respuestas tardías si el diagrama cambió mientras cargaba
       if (diagramaActualRef.current !== currentDiagramId) {
         return;
@@ -42,6 +50,8 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
 
       if (res.ok) {
         setInteracciones(res.data.items);
+        setHayMas(Boolean(res.data.hayMas));
+        setOffset(res.data.items.length);
       } else {
         setError(res.errors?.[0] || "No se pudo cargar el historial del chat.");
       }
@@ -60,6 +70,48 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     cargarHistorial();
   }, [cargarHistorial]);
+
+  // Cargar segmento anterior de mensajes (5 más antiguos)
+  const cargarMasInteracciones = useCallback(async () => {
+    if (!diagramaId || cargandoMas || !hayMas) {
+      return;
+    }
+
+    const currentDiagramId = diagramaId;
+    setCargandoMas(true);
+    setError(null);
+
+    try {
+      const res = await listarInteraccionesIaAction(currentDiagramId, {
+        limite: 5,
+        offset,
+      });
+
+      if (diagramaActualRef.current !== currentDiagramId) {
+        return;
+      }
+
+      if (res.ok) {
+        setInteracciones((prev) => {
+          const idsExistentes = new Set(prev.map((i) => i.id));
+          const nuevosAntiguos = res.data.items.filter((i) => !idsExistentes.has(i.id));
+          return [...nuevosAntiguos, ...prev];
+        });
+        setHayMas(Boolean(res.data.hayMas));
+        setOffset((prev) => prev + res.data.items.length);
+      } else {
+        setError(res.errors?.[0] || "No se pudieron cargar más mensajes.");
+      }
+    } catch {
+      if (diagramaActualRef.current === currentDiagramId) {
+        setError("Error de red al cargar mensajes anteriores.");
+      }
+    } finally {
+      if (diagramaActualRef.current === currentDiagramId) {
+        setCargandoMas(false);
+      }
+    }
+  }, [diagramaId, cargandoMas, hayMas, offset]);
 
   // Enviar mensaje con estado optimista e idempotencia
   const enviarMensaje = useCallback(
@@ -293,6 +345,22 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
     [diagramaId, enviando]
   );
 
+  const agregarInteraccion = useCallback((interaccion: InteraccionIa) => {
+    setInteracciones((prev) => {
+      if (
+        prev.some(
+          (item) =>
+            item.id === interaccion.id ||
+            (item.claveIdempotencia &&
+              item.claveIdempotencia === interaccion.claveIdempotencia)
+        )
+      ) {
+        return prev;
+      }
+      return [...prev, interaccion];
+    });
+  }, []);
+
   const limpiarError = useCallback(() => {
     setError(null);
   }, []);
@@ -300,12 +368,16 @@ export function useHistorialInteraccionesIa(diagramaId: string | null) {
   return {
     interacciones,
     cargando,
+    cargandoMas,
+    hayMas,
     enviando,
     error,
     enviarMensaje,
     enviarAudio,
     enviarImagen,
+    agregarInteraccion,
     cargarHistorial,
+    cargarMasInteracciones,
     limpiarError,
   };
 }

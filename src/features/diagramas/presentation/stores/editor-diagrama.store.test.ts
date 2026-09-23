@@ -612,4 +612,96 @@ describe("editor-diagrama.store", () => {
     expect(destConfirmado?.atributos.length).toBe(2);
     expect(destConfirmado?.atributos.some((a) => a.id === "attr-fk-dest")).toBe(false);
   });
+
+  it("diferencia los nombres de atributos FK en estructuras N:M recursivas (misma clase)", () => {
+    useEditorDiagramaStore.getState().hidratar("user:diag-rec", {
+      ...detalle,
+      clases: [
+        {
+          id: "cat-1",
+          idDiagrama: detalle.id,
+          nombre: "Categoria",
+          posicionX: 100,
+          posicionY: 100,
+          ancho: 200,
+          atributos: [
+            {
+              id: "pk-cat-1",
+              idClase: "cat-1",
+              nombre: "id",
+              tipoDato: "integer",
+              longitud: null,
+              precision: null,
+              escala: null,
+              permiteNulo: false,
+              esLlavePrimaria: true,
+              esUnico: true,
+              valorPorDefecto: null,
+              ordenDePosicion: 1,
+              procedencia: "sistema_clase" as const,
+            },
+          ],
+        },
+      ],
+    });
+
+    const opNmRecursiva: OperacionEditor = {
+      actionId: "act-nm-rec",
+      scopeKey: "user:diag-rec",
+      secuencia: 1,
+      tipo: "CREAR_ESTRUCTURA_NM",
+      payload: {
+        idEstructuraNm: "nm-rec-1",
+        idClaseOrigen: "cat-1",
+        idClaseDestino: "cat-1",
+        claseIntermedia: {
+          idClase: "c-inter-rec",
+          nombre: "Categoria_Subcategoria",
+          posicionX: 200,
+          posicionY: 250,
+          ancho: 280,
+          idAtributoPk: "pk-inter-1",
+          nombreAtributoPk: "id",
+        },
+        relacionOrigen: {
+          idRelacion: "rel-orig-rec",
+          cardinalidadOrigen: "1",
+          cardinalidadDestino: "0..*",
+          conectorOrigen: "top",
+          conectorDestino: "left",
+        },
+        relacionDestino: {
+          idRelacion: "rel-dest-rec",
+          cardinalidadOrigen: "1",
+          cardinalidadDestino: "0..*",
+          conectorOrigen: "right",
+          conectorDestino: "right",
+        },
+        referenciaFkOrigen: {
+          idReferenciaFk: "ref-orig-rec",
+          idAtributoFk: "fk-orig-rec",
+          idAtributoReferenciado: "pk-cat-1",
+          nombreAtributoFk: "categoria_id",
+        },
+        referenciaFkDestino: {
+          idReferenciaFk: "ref-dest-rec",
+          idAtributoFk: "fk-dest-rec",
+          idAtributoReferenciado: "pk-cat-1",
+          nombreAtributoFk: "categoria_id",
+        },
+      },
+    };
+
+    useEditorDiagramaStore.getState().ejecutarOperacionLocal(opNmRecursiva);
+
+    const inter = useEditorDiagramaStore.getState().clases.find((c) => c.id === "c-inter-rec");
+    expect(inter).toBeDefined();
+    expect(inter?.atributos.length).toBe(3);
+
+    const nombresAtributos = inter?.atributos.map((a) => a.nombre);
+    expect(nombresAtributos).toContain("id");
+    expect(nombresAtributos).toContain("categoria_origen_id");
+    expect(nombresAtributos).toContain("categoria_destino_id");
+  });
 });
+

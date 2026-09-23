@@ -300,4 +300,99 @@ describe("useHistorialInteraccionesIa", () => {
     // Sin burbuja residual en historial
     expect(result.current.interacciones).toHaveLength(0);
   });
+
+  it("permite paginar mensajes anteriores con cargarMasInteracciones", async () => {
+    // 1. Carga inicial: 5 mensajes más recientes con hayMas = true
+    vi.mocked(actions.listarInteraccionesIaAction)
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          items: [
+            {
+              id: "msg-3",
+              idDiagrama: diagramaId,
+              idUsuario: "user-1",
+              tipo: "CONVERSACION",
+              estado: "COMPLETADO",
+              entradaUsuario: "Mensaje 3",
+              respuestaIa: "Respuesta 3",
+              claveIdempotencia: "idemp-3",
+              creadoEn: "2026-09-20T10:03:00Z",
+            },
+            {
+              id: "msg-4",
+              idDiagrama: diagramaId,
+              idUsuario: "user-1",
+              tipo: "CONVERSACION",
+              estado: "COMPLETADO",
+              entradaUsuario: "Mensaje 4",
+              respuestaIa: "Respuesta 4",
+              claveIdempotencia: "idemp-4",
+              creadoEn: "2026-09-20T10:04:00Z",
+            },
+          ],
+          total: 4,
+          hayMas: true,
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          items: [
+            {
+              id: "msg-1",
+              idDiagrama: diagramaId,
+              idUsuario: "user-1",
+              tipo: "CONVERSACION",
+              estado: "COMPLETADO",
+              entradaUsuario: "Mensaje 1",
+              respuestaIa: "Respuesta 1",
+              claveIdempotencia: "idemp-1",
+              creadoEn: "2026-09-20T10:01:00Z",
+            },
+            {
+              id: "msg-2",
+              idDiagrama: diagramaId,
+              idUsuario: "user-1",
+              tipo: "CONVERSACION",
+              estado: "COMPLETADO",
+              entradaUsuario: "Mensaje 2",
+              respuestaIa: "Respuesta 2",
+              claveIdempotencia: "idemp-2",
+              creadoEn: "2026-09-20T10:02:00Z",
+            },
+          ],
+          total: 4,
+          hayMas: false,
+        },
+      });
+
+    const { result } = renderHook(() =>
+      useHistorialInteraccionesIa(diagramaId)
+    );
+
+    await waitFor(() => {
+      expect(result.current.cargando).toBe(false);
+    });
+
+    expect(result.current.interacciones).toHaveLength(2);
+    expect(result.current.hayMas).toBe(true);
+
+    // 2. Ejecutar cargarMasInteracciones
+    await act(async () => {
+      await result.current.cargarMasInteracciones();
+    });
+
+    expect(actions.listarInteraccionesIaAction).toHaveBeenLastCalledWith(
+      diagramaId,
+      { limite: 5, offset: 2 }
+    );
+    expect(result.current.interacciones).toHaveLength(4);
+    // Mensajes más antiguos antepuestos
+    expect(result.current.interacciones[0].id).toBe("msg-1");
+    expect(result.current.interacciones[1].id).toBe("msg-2");
+    expect(result.current.interacciones[2].id).toBe("msg-3");
+    expect(result.current.interacciones[3].id).toBe("msg-4");
+    expect(result.current.hayMas).toBe(false);
+  });
 });

@@ -1,5 +1,3 @@
-"use server";
-
 import { z } from "zod";
 import type { ApiResult } from "@/features/shared/domain/types/api-results";
 import type {
@@ -15,7 +13,7 @@ const IdDiagramaParamSchema = z
 
 export async function listarInteraccionesIaAction(
   idDiagrama: string,
-  cursor?: string,
+  cursorUopciones?: string | { cursor?: string; limite?: number; offset?: number },
   limite?: number
 ): Promise<ApiResult<ListaInteraccionesIa>> {
   const parsedDiagrama = IdDiagramaParamSchema.safeParse(idDiagrama);
@@ -29,7 +27,7 @@ export async function listarInteraccionesIaAction(
 
   return interaccionIaRepositoryImpl.listarInteracciones(
     parsedDiagrama.data,
-    cursor,
+    cursorUopciones,
     limite
   );
 }

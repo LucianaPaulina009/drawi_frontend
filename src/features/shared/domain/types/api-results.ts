@@ -17,6 +17,8 @@ export type ApiError = {
   code?: string;
   errors: string[];
   validationErrors?: Record<string, string[] | undefined>;
+  mensajeChat?: string;
+  interaccionId?: string;
   data?: null;
 };
 
@@ -89,6 +91,8 @@ export type ApiFile = {
   fileName: string;
   contentType: string;
   blob: Blob;
+  mensajeChat?: string;
+  interaccionId?: string;
 };
 
 export type ApiFileResult = ApiOk<ApiFile> | ApiError;

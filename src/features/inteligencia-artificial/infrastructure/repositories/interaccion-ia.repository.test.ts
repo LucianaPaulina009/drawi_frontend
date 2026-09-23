@@ -47,7 +47,7 @@ describe("interaccionIaRepositoryImpl", () => {
     expect(apiClient.apiRequestData).toHaveBeenCalledWith(
       expect.objectContaining({
         url: expect.stringContaining(
-          "/diagramas/11111111-1111-1111-1111-111111111111/interacciones-ia?cursor=cursor-abc&limite=20"
+          "/diagramas/11111111-1111-1111-1111-111111111111/interacciones-ia?before=cursor-abc&limit=20"
         ),
         method: "GET",
       })

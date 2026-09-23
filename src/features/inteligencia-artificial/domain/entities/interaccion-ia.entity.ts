@@ -32,6 +32,7 @@ export interface ListaInteraccionesIa {
   items: InteraccionIa[];
   proximoCursor?: string | null;
   total?: number | null;
+  hayMas?: boolean;
 }
 
 export interface EnviarMensajeIaData {

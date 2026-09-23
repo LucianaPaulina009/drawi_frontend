@@ -52,6 +52,48 @@ export const fastapiErrorAdapter: BackendErrorAdapter = {
       };
     }
 
+    // 1.1 Formato Diagnóstico / Errores Bloqueantes
+    const rawErrores = Array.isArray(payload["errores"])
+      ? payload["errores"]
+      : Array.isArray(payload["errores_bloqueantes"])
+      ? payload["errores_bloqueantes"]
+      : null;
+
+    if (rawErrores) {
+      const bloqueantes = rawErrores as Array<unknown>;
+      const mensajesBloqueantes = bloqueantes
+        .map((e) => {
+          const item = asObject(e);
+          return typeof item?.["mensaje"] === "string" ? item["mensaje"].trim() : "";
+        })
+        .filter(Boolean);
+
+      const mensajeGeneral =
+        typeof payload["message"] === "string" && payload["message"].trim()
+          ? payload["message"].trim()
+          : undefined;
+
+      const errores = [
+        ...(mensajeGeneral ? [mensajeGeneral] : []),
+        ...mensajesBloqueantes,
+      ];
+
+      if (errores.length > 0) {
+        return {
+          code: typeof payload["code"] === "string" ? payload["code"] : undefined,
+          errors: errores,
+        };
+      }
+    }
+
+    // 1.2 Formato Directo: { "code": "...", "message": "..." }
+    if (typeof payload["message"] === "string" && payload["message"].trim()) {
+      return {
+        code: typeof payload["code"] === "string" ? payload["code"] : undefined,
+        errors: [payload["message"].trim()],
+      };
+    }
+
     // 2. Formato Nativo de FastAPI (Fallback): { "detail": "..." }
     const detail = payload["detail"];
 

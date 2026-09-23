@@ -30,17 +30,34 @@ const BASE_URL = rawBackendUrl.endsWith("/api")
 export const interaccionIaRepositoryImpl: InteraccionIaRepository = {
   listarInteracciones(
     idDiagrama: string,
-    cursor?: string,
+    cursorUopciones?: string | { cursor?: string; limite?: number; offset?: number },
     limite?: number
   ): Promise<ApiResult<ListaInteraccionesIa>> {
     const params = new URLSearchParams();
-    if (cursor) params.set("cursor", cursor);
-    if (limite) params.set("limite", limite.toString());
+    if (typeof cursorUopciones === "string") {
+      params.set("before", cursorUopciones);
+      if (limite !== undefined) {
+        params.set("limit", limite.toString());
+      }
+    } else if (cursorUopciones) {
+      if (cursorUopciones.cursor) {
+        params.set("before", cursorUopciones.cursor);
+      }
+      if (cursorUopciones.limite !== undefined) {
+        params.set("limit", cursorUopciones.limite.toString());
+      }
+      if (cursorUopciones.offset !== undefined) {
+        params.set("offset", cursorUopciones.offset.toString());
+      }
+    } else if (limite !== undefined) {
+      params.set("limit", limite.toString());
+    }
     const queryString = params.toString() ? `?${params.toString()}` : "";
 
     return apiRequestData({
       url: `${BASE_URL}/${idDiagrama}/interacciones-ia${queryString}`,
       method: "GET",
+      cache: "no-store",
       responseSchema: ListaInteraccionesIaResponseSchema,
       mapData: interaccionIaMapper.toListaDomain,
       fallbackMessage: "Error al obtener el historial de interacciones IA.",

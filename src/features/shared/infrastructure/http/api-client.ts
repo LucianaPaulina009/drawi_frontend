@@ -373,7 +373,18 @@ export async function apiRequestFile(
 
   try {
     const res = await executeWithAuthRetry(withAuth, (token) =>
-      doRequest(config, token)
+      doRequest(
+        {
+          ...config,
+          headers: {
+            Accept: config.defaultContentType
+              ? `${config.defaultContentType}, application/json, */*`
+              : "application/octet-stream, application/json, */*",
+            ...config.headers,
+          },
+        },
+        token
+      )
     );
 
     // Retry en 401
@@ -390,9 +401,20 @@ export async function apiRequestFile(
       config.defaultContentType ??
       "application/octet-stream";
 
+    const rawMensajeChat = res.headers.get("x-mensaje-chat");
+    let mensajeChat: string | undefined = undefined;
+    if (rawMensajeChat) {
+      try {
+        mensajeChat = decodeURIComponent(rawMensajeChat);
+      } catch {
+        mensajeChat = rawMensajeChat;
+      }
+    }
+    const interaccionId = res.headers.get("x-interaccion-id") ?? undefined;
+
     return {
       ok: true,
-      data: { fileName, contentType, blob },
+      data: { fileName, contentType, blob, mensajeChat, interaccionId },
     };
   } catch {
     return errorResult("Error de conexión. Intenta más tarde.");

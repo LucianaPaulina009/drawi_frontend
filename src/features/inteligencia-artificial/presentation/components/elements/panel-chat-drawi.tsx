@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   AlertCircle,
   ArrowUp,
+  ChevronUp,
   Info,
   Loader2,
   Mic,
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils";
 import type { GrabacionAudioResult } from "../../hooks/use-grabacion-audio";
 import type { useAsistenteIa } from "../../hooks/use-asistente-ia";
 import type { useHistorialInteraccionesIa } from "../../hooks/use-historial-interacciones-ia";
+import type { UseGeneracionBackendReturn } from "@/features/generacion-backend/presentation/hooks/use-generacion-backend";
 import { AdjuntoImagenDrawi } from "./adjunto-imagen-drawi";
 import { ControlAudioDrawi, type EstadoVoz } from "./control-audio-drawi";
 
@@ -27,6 +29,7 @@ export interface PanelChatDrawiProps {
   asistente: ReturnType<typeof useAsistenteIa>;
   grabacion: GrabacionAudioResult;
   historialIa?: ReturnType<typeof useHistorialInteraccionesIa>;
+  generacionBackend?: UseGeneracionBackendReturn;
   estadoVoz?: EstadoVoz;
   errorVoz?: string | null;
   deshabilitadoVoz?: boolean;
@@ -41,6 +44,7 @@ export function PanelChatDrawi({
   asistente,
   grabacion,
   historialIa,
+  generacionBackend,
   estadoVoz = "idle",
   errorVoz,
   deshabilitadoVoz,
@@ -63,6 +67,9 @@ export function PanelChatDrawi({
   } = asistente;
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const contenedorScrollRef = useRef<HTMLDivElement | null>(null);
+  const esCargaMasRef = useRef<boolean>(false);
+  const prevScrollHeightRef = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const inputTextoRef = useRef<HTMLInputElement | null>(null);
 
@@ -97,13 +104,33 @@ export function PanelChatDrawi({
     }
   };
 
+  const handleCargarMas = async () => {
+    if (!historialIa || historialIa.cargandoMas) return;
+    const el = contenedorScrollRef.current;
+    if (el) {
+      prevScrollHeightRef.current = el.scrollHeight;
+    }
+    esCargaMasRef.current = true;
+    await historialIa.cargarMasInteracciones();
+  };
+
   const interacciones = historialIa ? historialIa.interacciones : [];
   const cantidadMensajes = historialIa
     ? interacciones.length
     : mensajesLocales.length;
 
-  // Auto-scroll al final al recibir nuevos mensajes
+  // Auto-scroll al final al recibir nuevos mensajes (preserva scroll al cargar mensajes anteriores)
   useEffect(() => {
+    if (esCargaMasRef.current) {
+      esCargaMasRef.current = false;
+      const el = contenedorScrollRef.current;
+      if (el && prevScrollHeightRef.current > 0) {
+        const diff = el.scrollHeight - prevScrollHeightRef.current;
+        el.scrollTop += diff;
+      }
+      return;
+    }
+
     if (abierto && cantidadMensajes > 0) {
       if (typeof messagesEndRef.current?.scrollIntoView === "function") {
         messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -223,6 +250,69 @@ export function PanelChatDrawi({
             </div>
           </div>
 
+          {/* ── Banners de Generación de Backend ──────────────────────────── */}
+          {generacionBackend?.estaGenerando && (
+            <div
+              role="status"
+              className="mx-4 mt-3 flex items-center gap-2.5 rounded-2xl border border-sky-200 bg-sky-50 p-2.5 text-xs text-sky-900 shadow-sm"
+            >
+              <Loader2 className="h-4 w-4 animate-spin text-sky-600 shrink-0" />
+              <div className="flex-1 text-[11px] leading-relaxed">
+                <p className="font-semibold">Generando backend Spring Boot...</p>
+                <p className="text-sky-700">Validando snapshot, renderizando plantillas y empaquetando ZIP.</p>
+              </div>
+            </div>
+          )}
+
+          {generacionBackend?.estado === "completado" && (
+            <div
+              role="status"
+              className="mx-4 mt-3 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-900 shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-emerald-600 shrink-0" />
+                <p className="text-[11px] text-emerald-700 font-medium">
+                  Backend generado correctamente.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={generacionBackend.reiniciar}
+                aria-label="Cerrar aviso de éxito"
+                className="ml-2 text-emerald-700 hover:text-emerald-900 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+          {generacionBackend?.estado === "error" && (
+            <div
+              role="alert"
+              className="mx-4 mt-3 flex items-center justify-between rounded-2xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-900 shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
+                <div>
+                  <p className="text-[11px] font-semibold text-red-800">
+                    Error al generar backend
+                  </p>
+                  <p className="text-[11px] text-red-700 font-medium">
+                    Se encontraron errores en el diagrama.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={generacionBackend.reiniciar}
+                aria-label="Cerrar aviso de error"
+                className="ml-2 text-red-700 hover:text-red-900 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* ── Avisos y Errores de Chat ─────────────────────────────────── */}
           {avisoIndisponibilidad && (
             <div
@@ -268,6 +358,7 @@ export function PanelChatDrawi({
 
           {/* ── Historial de Mensajes ──────────────────────────────────── */}
           <div
+            ref={contenedorScrollRef}
             className="flex-1 overflow-y-auto p-4 space-y-4 bg-white scrollbar-thin scrollbar-thumb-slate-200"
             data-testid="historial-mensajes"
           >
@@ -290,7 +381,31 @@ export function PanelChatDrawi({
                 </p>
               </div>
             ) : historialIa ? (
-              interacciones.map((item) => {
+              <>
+                {historialIa.hayMas && (
+                  <div className="flex justify-center pt-1 pb-2">
+                    <button
+                      type="button"
+                      onClick={handleCargarMas}
+                      disabled={historialIa.cargandoMas}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-sky-600 bg-sky-50 hover:bg-sky-100 rounded-full border border-sky-200 transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                      aria-label="Cargar más mensajes anteriores"
+                    >
+                      {historialIa.cargandoMas ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Cargando mensajes...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronUp className="w-3.5 h-3.5" />
+                          <span>Cargar más</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+                {interacciones.map((item) => {
                 const hora = new Date(item.creadoEn).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -368,7 +483,8 @@ export function PanelChatDrawi({
                     ) : null}
                   </div>
                 );
-              })
+              })}
+              </>
             ) : (
               mensajesLocales.map((msg) => {
                 const hora = new Date(msg.creadoEn).toLocaleTimeString([], {

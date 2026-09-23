@@ -465,10 +465,16 @@ export function reducirOperacion(
       const nombrePk = cInter.nombreAtributoPk ?? cInter.nombre_atributo_pk ?? "id";
 
       const idFkOrig = refOrig.idAtributoFk ?? refOrig.id_atributo_fk ?? p.idAtributoFkOrigen ?? p.id_atributo_fk_origen;
-      const nombreFkOrig = refOrig.nombreAtributoFk ?? refOrig.nombre_atributo_fk ?? p.nombreAtributoFkOrigen ?? `${(clases.find((c) => c.id === idClaseOrigen)?.nombre || "origen").toLowerCase()}_id`;
+      let nombreFkOrig = refOrig.nombreAtributoFk ?? refOrig.nombre_atributo_fk ?? p.nombreAtributoFkOrigen ?? `${(clases.find((c) => c.id === idClaseOrigen)?.nombre || "origen").toLowerCase()}_id`;
 
       const idFkDest = refDest.idAtributoFk ?? refDest.id_atributo_fk ?? p.idAtributoFkDestino ?? p.id_atributo_fk_destino;
-      const nombreFkDest = refDest.nombreAtributoFk ?? refDest.nombre_atributo_fk ?? p.nombreAtributoFkDestino ?? `${(clases.find((c) => c.id === idClaseDestino)?.nombre || "destino").toLowerCase()}_id`;
+      let nombreFkDest = refDest.nombreAtributoFk ?? refDest.nombre_atributo_fk ?? p.nombreAtributoFkDestino ?? `${(clases.find((c) => c.id === idClaseDestino)?.nombre || "destino").toLowerCase()}_id`;
+
+      if (idClaseOrigen === idClaseDestino && nombreFkOrig === nombreFkDest) {
+        const baseNombre = (clases.find((c) => c.id === idClaseOrigen)?.nombre || "origen").toLowerCase();
+        nombreFkOrig = `${baseNombre}_origen_id`;
+        nombreFkDest = `${baseNombre}_destino_id`;
+      }
 
       const idRelOrig = rOrig.idRelacion ?? rOrig.id_relacion ?? p.idRelacionOrigen ?? p.id_relacion_origen;
       const idRelDest = rDest.idRelacion ?? rDest.id_relacion ?? p.idRelacionDestino ?? p.id_relacion_destino;

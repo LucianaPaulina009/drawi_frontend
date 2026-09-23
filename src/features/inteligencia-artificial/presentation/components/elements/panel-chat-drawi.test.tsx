@@ -49,12 +49,16 @@ describe("PanelChatDrawi", () => {
   ): ReturnType<typeof useHistorialInteraccionesIa> => ({
     interacciones: [],
     cargando: false,
+    cargandoMas: false,
+    hayMas: false,
     enviando: false,
     error: null,
     enviarMensaje: vi.fn(async () => true),
     enviarAudio: vi.fn(async () => true),
     enviarImagen: vi.fn(async () => true),
     cargarHistorial: vi.fn(async () => {}),
+    cargarMasInteracciones: vi.fn(async () => {}),
+    agregarInteraccion: vi.fn(),
     limpiarError: vi.fn(),
     ...overrides,
   });
@@ -104,6 +108,45 @@ describe("PanelChatDrawi", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Hola DRAWI")).toBeInTheDocument();
     expect(screen.getByText("¡Hola! Estoy listo para modelar.")).toBeInTheDocument();
+  });
+
+  it("renderiza una interacción de tipo GENERACION_BACKEND con la lista completa de errores en un solo mensaje", () => {
+    const mockHistorial = createMockHistorial({
+      interacciones: [
+        {
+          id: "int-backend-err",
+          idDiagrama: "11111111-1111-1111-1111-111111111111",
+          idUsuario: "user-1",
+          tipo: "GENERACION_BACKEND",
+          estado: "ERROR",
+          entradaUsuario: "Generar Backend",
+          respuestaIa:
+            "No se pudo generar el backend porque el diagrama contiene los siguientes errores:\n\n• La clase Venta no tiene una clave primaria válida.\n• El atributo total tiene un tipo no soportado.\n• La relación Cliente - Venta tiene una FK inconsistente.",
+          claveIdempotencia: "99999999-9999-9999-9999-999999999999",
+          creadoEn: "2026-09-22T12:00:00Z",
+        },
+      ],
+    });
+
+    render(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={createMockAsistente()}
+        grabacion={createMockGrabacion()}
+        historialIa={mockHistorial}
+      />
+    );
+
+    expect(screen.getByText("Generar Backend")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /No se pudo generar el backend porque el diagrama contiene los siguientes errores:/
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/• La clase Venta no tiene una clave primaria válida\./)
+    ).toBeInTheDocument();
   });
 
   it("permite escribir y enviar consultas al hook de historial persistido", () => {
@@ -318,5 +361,173 @@ describe("PanelChatDrawi", () => {
     );
     expect(screen.queryByRole("button", { name: "Descartar grabación" })).not.toBeInTheDocument();
   });
+
+  it("renderiza interacción GENERACION_BACKEND de error con viñetas y formato agente", () => {
+    const mockHistorial = createMockHistorial({
+      interacciones: [
+        {
+          id: "int-gen-err",
+          idDiagrama: "diag-1",
+          idUsuario: "user-1",
+          tipo: "GENERACION_BACKEND",
+          estado: "ERROR",
+          entradaUsuario: "Generar Backend",
+          respuestaIa:
+            "No se pudo generar el backend porque el diagrama contiene los siguientes errores:\n\n• La clase 'Venta' no tiene una clave primaria (PK) definida.\n• El atributo 'precio' tiene un tipo no soportado.",
+          claveIdempotencia: "key-err-1",
+          creadoEn: "2026-09-22T10:00:00Z",
+        },
+      ],
+    });
+
+    render(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={createMockAsistente()}
+        grabacion={createMockGrabacion()}
+        historialIa={mockHistorial}
+      />
+    );
+
+    expect(screen.getByText("Generar Backend")).toBeInTheDocument();
+    expect(
+      screen.getByText(/No se pudo generar el backend porque el diagrama contiene los siguientes errores/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/• La clase 'Venta' no tiene una clave primaria/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/• El atributo 'precio' tiene un tipo no soportado/)
+    ).toBeInTheDocument();
+  });
+
+  it("renderiza interacción GENERACION_BACKEND de éxito como respuesta confirmatoria del agente", () => {
+    const mockHistorial = createMockHistorial({
+      interacciones: [
+        {
+          id: "int-gen-ok",
+          idDiagrama: "diag-1",
+          idUsuario: "user-1",
+          tipo: "GENERACION_BACKEND",
+          estado: "COMPLETADO",
+          entradaUsuario: "Generar Backend",
+          respuestaIa: "Backend generado correctamente.",
+          claveIdempotencia: "key-ok-1",
+          creadoEn: "2026-09-22T10:05:00Z",
+        },
+      ],
+    });
+
+    render(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={createMockAsistente()}
+        grabacion={createMockGrabacion()}
+        historialIa={mockHistorial}
+      />
+    );
+
+    expect(screen.getByText("Generar Backend")).toBeInTheDocument();
+    expect(screen.getByText("Backend generado correctamente.")).toBeInTheDocument();
+  });
+
+  it("renderiza el banner de error conciso cuando generacionBackend.estado es error", () => {
+    const mockGeneracion = {
+      estado: "error" as const,
+      errorMensaje: "Se encontraron errores en el diagrama.",
+      erroresDetalle: ["• Error 1"],
+      nombreArchivoDescargado: null,
+      estaGenerando: false,
+      ultimoMensajeChat: null,
+      ultimaInteraccionId: null,
+      generarBackend: vi.fn(),
+      reiniciar: vi.fn(),
+    };
+
+    render(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={createMockAsistente()}
+        grabacion={createMockGrabacion()}
+        generacionBackend={mockGeneracion}
+      />
+    );
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText("Error al generar backend")).toBeInTheDocument();
+    expect(screen.getByText("Se encontraron errores en el diagrama.")).toBeInTheDocument();
+  });
+
+  it("muestra el botón 'Cargar más' cuando hayMas es true y ejecuta cargarMasInteracciones al hacer clic", () => {
+    const mockCargarMas = vi.fn(async () => {});
+    const mockHistorial = createMockHistorial({
+      hayMas: true,
+      cargarMasInteracciones: mockCargarMas,
+      interacciones: [
+        {
+          id: "int-1",
+          idDiagrama: "diag-1",
+          idUsuario: "yo",
+          tipo: "CONVERSACION",
+          estado: "COMPLETADO",
+          entradaUsuario: "Hola DRAWI",
+          respuestaIa: "Hola",
+          claveIdempotencia: "c-1",
+          creadoEn: "2026-09-20T10:00:00Z",
+        },
+      ],
+    });
+
+    render(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={createMockAsistente()}
+        grabacion={createMockGrabacion()}
+        historialIa={mockHistorial}
+      />
+    );
+
+    const botonCargarMas = screen.getByRole("button", { name: "Cargar más mensajes anteriores" });
+    expect(botonCargarMas).toBeInTheDocument();
+
+    fireEvent.click(botonCargarMas);
+    expect(mockCargarMas).toHaveBeenCalledTimes(1);
+  });
+
+  it("oculta el botón 'Cargar más' cuando hayMas es false", () => {
+    const mockHistorial = createMockHistorial({
+      hayMas: false,
+      interacciones: [
+        {
+          id: "int-1",
+          idDiagrama: "diag-1",
+          idUsuario: "yo",
+          tipo: "CONVERSACION",
+          estado: "COMPLETADO",
+          entradaUsuario: "Hola DRAWI",
+          respuestaIa: "Hola",
+          claveIdempotencia: "c-1",
+          creadoEn: "2026-09-20T10:00:00Z",
+        },
+      ],
+    });
+
+    render(
+      <PanelChatDrawi
+        abierto={true}
+        onCerrar={vi.fn()}
+        asistente={createMockAsistente()}
+        grabacion={createMockGrabacion()}
+        historialIa={mockHistorial}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Cargar más mensajes anteriores" })).not.toBeInTheDocument();
+  });
 });
+
 

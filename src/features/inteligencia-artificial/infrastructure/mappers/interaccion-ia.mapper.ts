@@ -60,6 +60,7 @@ export const interaccionIaMapper = {
         dto.proximo_cursor ??
         null,
       total: dto.total ?? null,
+      hayMas: dto.hayMas ?? dto.hay_mas ?? false,
     };
   },
 };

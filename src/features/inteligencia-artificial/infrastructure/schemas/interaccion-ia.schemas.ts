@@ -77,6 +77,10 @@ export const ListaInteraccionesIaResponseSchema = z.object({
   siguienteCursor: z.string().nullable().optional(),
   siguiente_cursor: z.string().nullable().optional(),
   total: z.number().nullable().optional(),
+  hayMas: z.boolean().nullable().optional(),
+  hay_mas: z.boolean().nullable().optional(),
+  offset: z.number().nullable().optional(),
+  limit: z.number().nullable().optional(),
 });
 
 export type ListaInteraccionesIaResponse = z.infer<

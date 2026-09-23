@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAsistenteIa } from "../../hooks/use-asistente-ia";
 import { useGrabacionAudio } from "../../hooks/use-grabacion-audio";
 import { useHistorialInteraccionesIa } from "../../hooks/use-historial-interacciones-ia";
-import { useEditorDiagramaStore } from "@/features/diagramas/presentation/stores/editor-diagrama.store";
+import { useGeneracionBackend } from "@/features/generacion-backend/presentation/hooks/use-generacion-backend";
 import { MascotaDrawi } from "./mascota-drawi";
 import { PanelChatDrawi } from "./panel-chat-drawi";
 import type { EstadoVoz } from "./control-audio-drawi";
@@ -28,6 +28,23 @@ export function AsistenteIaEditor({
 }: AsistenteIaEditorProps) {
   const asistente = useAsistenteIa(diagramaId);
   const historialIa = useHistorialInteraccionesIa(diagramaId);
+  const generacionBackend = useGeneracionBackend({
+    onResultado: ({ ok, mensajeChat, interaccionId }) => {
+      if (diagramaId && mensajeChat) {
+        historialIa.agregarInteraccion({
+          id: interaccionId || crypto.randomUUID(),
+          idDiagrama: diagramaId,
+          idUsuario: "drawi-ia",
+          tipo: "GENERACION_BACKEND",
+          estado: ok ? "COMPLETADO" : "ERROR",
+          entradaUsuario: "",
+          respuestaIa: mensajeChat,
+          claveIdempotencia: crypto.randomUUID(),
+          creadoEn: new Date().toISOString(),
+        });
+      }
+    },
+  });
   const grabacion = useGrabacionAudio();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [modoImagen, setModoImagen] = useState(false);
@@ -180,71 +197,29 @@ export function AsistenteIaEditor({
     setErrorVoz(null);
   };
 
-  const handleGenerarBackend = () => {
-    const estado = useEditorDiagramaStore.getState();
-    const clases = estado.clases || [];
-    const relaciones = estado.relaciones || [];
-
-    let contenido = `/**\n * DRAWI - Backend Models & Schema\n * Generado automáticamente a partir del Diagrama UML\n * Fecha: ${new Date().toLocaleString()}\n */\n\n`;
-
-    if (clases.length === 0) {
-      contenido += `// No hay clases definidas en el diagrama actualmente.\nexport {};\n`;
-    } else {
-      for (const cls of clases) {
-        const nombreClase =
-          (cls.nombre || "Clase").replace(/[^a-zA-Z0-9_$]/g, "") || "Clase";
-        contenido += `export interface ${nombreClase} {\n`;
-        if (cls.atributos && cls.atributos.length > 0) {
-          for (const attr of cls.atributos) {
-            const tipoDato = attr.tipoDato || "varchar";
-            const tipoTs =
-              tipoDato === "integer" ||
-              tipoDato === "bigint" ||
-              tipoDato === "decimal"
-                ? "number"
-                : tipoDato === "boolean"
-                ? "boolean"
-                : tipoDato === "date" || tipoDato === "timestamp"
-                ? "Date"
-                : "string";
-            const opcional = attr.permiteNulo ? "?" : "";
-            const pkComment = attr.esLlavePrimaria ? " // PRIMARY KEY" : "";
-            const nombreCampo =
-              (attr.nombre || "campo").replace(/[^a-zA-Z0-9_$]/g, "") || "campo";
-            contenido += `  ${nombreCampo}${opcional}: ${tipoTs};${pkComment}\n`;
-          }
-        } else {
-          contenido += `  id: string;\n`;
-        }
-        contenido += `}\n\n`;
-      }
-
-      if (relaciones && relaciones.length > 0) {
-        contenido += `/**\n * Relaciones UML registradas:\n`;
-        for (const rel of relaciones) {
-          const origen =
-            clases.find((c) => c.id === rel.idClaseOrigen)?.nombre ||
-            rel.idClaseOrigen;
-          const destino =
-            clases.find((c) => c.id === rel.idClaseDestino)?.nombre ||
-            rel.idClaseDestino;
-          contenido += ` * - ${origen} -> ${destino} (${rel.tipoRelacion})\n`;
-        }
-        contenido += ` */\n`;
-      }
+  const handleGenerarBackend = async (): Promise<boolean> => {
+    if (!diagramaId) return false;
+    if (!abierto) {
+      onAbrir();
     }
-
-    const blob = new Blob([contenido], {
-      type: "text/typescript;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `backend-models-${Date.now()}.ts`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      const ok = await generacionBackend.generarBackend(diagramaId);
+      return ok;
+    } catch {
+      historialIa.agregarInteraccion({
+        id: crypto.randomUUID(),
+        idDiagrama: diagramaId,
+        idUsuario: "yo",
+        tipo: "GENERACION_BACKEND",
+        estado: "ERROR",
+        entradaUsuario: "",
+        respuestaIa:
+          "No se pudo generar el backend por un error técnico. Inténtalo nuevamente.",
+        claveIdempotencia: crypto.randomUUID(),
+        creadoEn: new Date().toISOString(),
+      });
+      return false;
+    }
   };
 
   const handleSeleccionarArchivo = async (
@@ -293,6 +268,7 @@ export function AsistenteIaEditor({
         asistente={asistente}
         grabacion={grabacion}
         historialIa={historialIa}
+        generacionBackend={generacionBackend}
         estadoVoz={estadoVoz}
         errorVoz={errorVoz}
         deshabilitadoVoz={historialIa.enviando}

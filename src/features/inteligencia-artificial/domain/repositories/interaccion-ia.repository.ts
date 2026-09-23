@@ -6,10 +6,16 @@ import type {
 } from "../entities/interaccion-ia.entity";
 import type { TranscripcionIaResponse } from "../../infrastructure/schemas/transcripcion-ia.schemas";
 
+export interface OpcionesListarInteracciones {
+  cursor?: string;
+  limite?: number;
+  offset?: number;
+}
+
 export interface InteraccionIaRepository {
   listarInteracciones(
     idDiagrama: string,
-    cursor?: string,
+    cursorUopciones?: string | OpcionesListarInteracciones,
     limite?: number
   ): Promise<ApiResult<ListaInteraccionesIa>>;
 
