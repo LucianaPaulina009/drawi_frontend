@@ -5,9 +5,9 @@ import { Toaster } from "sileo";
 import { appFontVariables } from "@/styles/fonts";
 
 export const metadata: Metadata = {
-  title: "next-scaffoldcito",
+  title: "DRAWI",
   description:
-    "Scaffold de Next.js con Better Auth, shadcn/ui y Clean Architecture",
+    "HERRAMIENTA WEB COLABORATIVA PARA MODELADO UML, DISEÑO DE BASES DE DATOS Y GENERACIÓN DE BACKEND ASISTIDA POR INTELIGENCIA ARTIFICIAL",
 };
 
 export default function RootLayout({

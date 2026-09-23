@@ -22,14 +22,14 @@ export function BotonAyudaFlotante({
     >
       <Link
         href={href}
-        className="group relative flex h-12 w-12 items-center justify-center rounded-2xl border border-black/10 bg-slate-950 text-white shadow-xl transition-all duration-200 hover:scale-105 hover:border-[#d9f99d]/60 hover:bg-black focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d9f99d]"
+        className="group relative flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-md transition-all duration-200 hover:scale-105 hover:border-lime-400 hover:bg-lime-50/80 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-lime-400"
         title="Manual de usuario"
         aria-label="Manual de usuario"
       >
-        <HelpCircle className="h-6 w-6 text-[#d9f99d] transition-transform duration-200 group-hover:rotate-12" />
+        <HelpCircle className="h-6 w-6 text-slate-700 transition-all duration-200 group-hover:rotate-12 group-hover:text-lime-800" />
 
         {/* Tooltip flotante al hacer hover */}
-        <span className="pointer-events-none absolute right-full mr-3 whitespace-nowrap rounded-xl border border-black/10 bg-slate-900/95 px-3 py-1.5 text-xs font-semibold text-white opacity-0 shadow-lg backdrop-blur-md transition-opacity duration-150 group-hover:opacity-100">
+        <span className="pointer-events-none absolute right-full mr-3 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 opacity-0 shadow-lg backdrop-blur-md transition-opacity duration-150 group-hover:opacity-100">
           Manual de usuario
         </span>
       </Link>
