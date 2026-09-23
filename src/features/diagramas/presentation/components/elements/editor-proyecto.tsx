@@ -1255,6 +1255,16 @@ export function EditorProyecto({
       setConexionPendiente(false);
       setTipoRelacionPendiente(undefined);
 
+      const esRecursivo =
+        pendiente.origen.id === pendiente.destino.id ||
+        pendiente.origen.nombre.toLowerCase() === pendiente.destino.nombre.toLowerCase();
+      const nombreFkOrigen = esRecursivo
+        ? `${pendiente.origen.nombre.toLowerCase()}_origen_id`
+        : `${pendiente.origen.nombre.toLowerCase()}_id`;
+      const nombreFkDestino = esRecursivo
+        ? `${pendiente.destino.nombre.toLowerCase()}_destino_id`
+        : `${pendiente.destino.nombre.toLowerCase()}_id`;
+
       try {
         await encolarOperacion("CREAR_ESTRUCTURA_NM", {
           idEstructuraNm: ids.estructura,
@@ -1289,7 +1299,7 @@ export function EditorProyecto({
             idReferenciaFk: ids.referenciaOrigen,
             idAtributoFk: ids.atributoFkOrigen,
             idAtributoReferenciado: atributoOrigen.id,
-            nombreAtributoFk: `${pendiente.origen.nombre.toLowerCase()}_id`,
+            nombreAtributoFk: nombreFkOrigen,
             onDelete: "NO_ACTION",
             onUpdate: "NO_ACTION",
           },
@@ -1297,7 +1307,7 @@ export function EditorProyecto({
             idReferenciaFk: ids.referenciaDestino,
             idAtributoFk: ids.atributoFkDestino,
             idAtributoReferenciado: atributoDestino.id,
-            nombreAtributoFk: `${pendiente.destino.nombre.toLowerCase()}_id`,
+            nombreAtributoFk: nombreFkDestino,
             onDelete: "NO_ACTION",
             onUpdate: "NO_ACTION",
           },

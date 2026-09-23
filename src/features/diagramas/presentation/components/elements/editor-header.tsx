@@ -14,6 +14,7 @@ import {
   Plus,
   Save,
   Share2,
+  Upload,
 } from "lucide-react";
 
 import {
@@ -23,6 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth-client";
 import { clearJWT } from "@/features/shared/infrastructure/http/jwt-manager";
 import { appToast } from "@/features/shared/presentation/components/notifications/toast";
@@ -33,6 +35,9 @@ import type { Diagrama } from "../../../domain/entities/diagrama.entity";
 import { NavegacionPaginas } from "./navegacion-paginas";
 import { EstadoSincronizacionEditor } from "./estado-sincronizacion-editor";
 import { useSalidaEditorPendiente } from "../../hooks/use-salida-editor-pendiente";
+import { useEditorDiagramaStore } from "../../stores/editor-diagrama.store";
+import { exportarDiagramaEaAction } from "../../actions/intercambio-enterprise-architect.action";
+import { ModalImportarEnterpriseArchitect } from "./modal-importar-enterprise-architect";
 
 export interface EditorHeaderProps {
   proyecto: Proyecto;
@@ -76,6 +81,47 @@ export function EditorHeader({
     confirmarSalida,
     totalPendientes,
   } = useSalidaEditorPendiente(session?.user?.id);
+
+  const clases = useEditorDiagramaStore((s) => s.clases);
+  const puedeExportar = Boolean(diagramaActivoId && clases && clases.length > 0);
+  const puedeImportar = Boolean(diagramaActivoId && (!clases || clases.length === 0));
+
+  const [modalImportarEaAbierto, setModalImportarEaAbierto] = useState(false);
+  const [isExportandoEa, setIsExportandoEa] = useState(false);
+
+  const handleExportarEa = async () => {
+    if (!diagramaActivoId || !puedeExportar || isExportandoEa) return;
+    setIsExportandoEa(true);
+    try {
+      const res = await exportarDiagramaEaAction(diagramaActivoId, proyecto.id);
+      if (res.ok) {
+        appToast.success(
+          "Exportación completada",
+          `Se descargó el archivo ${res.fileName}`
+        );
+      } else {
+        appToast.error(
+          "Error al exportar",
+          res.error.error || "No se pudo exportar a Enterprise Architect."
+        );
+      }
+    } catch {
+      appToast.error("Error", "Ocurrió un error inesperado al exportar.");
+    } finally {
+      setIsExportandoEa(false);
+    }
+  };
+
+  const handleAbrirImportarEa = () => {
+    if (!puedeImportar) return;
+    setModalImportarEaAbierto(true);
+  };
+
+  const handleImportacionExitosa = () => {
+    if (diagramaActivoId) {
+      onSeleccionarDiagrama(diagramaActivoId);
+    }
+  };
 
   const userInitials = session?.user?.name
     ? session.user.name
@@ -230,13 +276,50 @@ export function EditorHeader({
                 </div>
                 <span className="text-[10px] text-slate-400 font-medium">Ctrl+S</span>
               </DropdownMenuItem>
+              {/* Opciones de Intercambio con Enterprise Architect */}
               <DropdownMenuItem
-                disabled
-                className="flex items-center justify-between px-3 py-2 rounded-xl text-slate-700 opacity-60 cursor-not-allowed"
+                onClick={handleAbrirImportarEa}
+                disabled={!puedeImportar}
+                className={cn(
+                  "flex items-center justify-between px-3 py-2 rounded-xl text-slate-700 focus:bg-slate-100",
+                  puedeImportar
+                    ? "hover:bg-slate-50 cursor-pointer"
+                    : "opacity-50 cursor-not-allowed"
+                )}
+                title={
+                  !puedeImportar
+                    ? "Solo se puede importar en una página en blanco"
+                    : "Importar archivo XML/XMI de Enterprise Architect"
+                }
               >
                 <div className="flex items-center gap-2.5">
-                  <Download className="h-4 w-4 text-slate-500" />
-                  <span className="text-xs font-medium">Exportar</span>
+                  <Upload className="h-4 w-4 text-slate-500" />
+                  <span className="text-xs font-medium">Importar (Enterprise Architect)</span>
+                </div>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={handleExportarEa}
+                disabled={!puedeExportar || isExportandoEa}
+                className={cn(
+                  "flex items-center justify-between px-3 py-2 rounded-xl text-slate-700 focus:bg-slate-100",
+                  puedeExportar && !isExportandoEa
+                    ? "hover:bg-slate-50 cursor-pointer"
+                    : "opacity-50 cursor-not-allowed"
+                )}
+                title={
+                  !puedeExportar
+                    ? "Solo se puede exportar si el diagrama contiene clases"
+                    : "Exportar diagrama a XML para Enterprise Architect"
+                }
+              >
+                <div className="flex items-center gap-2.5">
+                  {isExportandoEa ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
+                  ) : (
+                    <Download className="h-4 w-4 text-slate-500" />
+                  )}
+                  <span className="text-xs font-medium">Exportar (Enterprise Architect)</span>
                 </div>
               </DropdownMenuItem>
 
@@ -339,6 +422,17 @@ export function EditorHeader({
         actionText="Salir de todos modos"
         onAction={confirmarSalida}
       />
+
+      {/* Diálogo accesible de importación desde Enterprise Architect */}
+      {diagramaActivoId && (
+        <ModalImportarEnterpriseArchitect
+          open={modalImportarEaAbierto}
+          onOpenChange={setModalImportarEaAbierto}
+          idProyecto={proyecto.id}
+          idDiagrama={diagramaActivoId}
+          onImportacionExitosa={handleImportacionExitosa}
+        />
+      )}
     </header>
   );
 }
